@@ -1,5 +1,6 @@
 // @ts-nocheck
 'use client'
+import Nav from '../../components/Nav'
 
 import { useState, useEffect } from 'react'
 
