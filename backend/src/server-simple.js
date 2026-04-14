@@ -12,15 +12,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'TRENCH backend', ts: new Date().toISOString() })
 })
 
-app.get('/api/rooms', (req, res) => {
-  res.json({ rooms: [], total: 0 })
-})
-
-app.get('/api/kols', (req, res) => {
-  res.json({ kols: [] })
-})
+app.get('/api/rooms', (req, res) => res.json({ rooms: [], total: 0 }))
+app.get('/api/kols', (req, res) => res.json({ kols: [] }))
 
 const PORT = process.env.PORT ?? 4000
-server.listen(PORT, () => {
-  console.log(`TRENCH backend running on port ${PORT}`)
-})
+server.listen(PORT, () => console.log(`TRENCH backend running on port ${PORT}`))
