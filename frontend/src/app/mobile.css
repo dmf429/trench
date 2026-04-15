@@ -1,0 +1,59 @@
+/* TRENCH — Mobile Responsive Styles */
+
+@media (max-width: 768px) {
+  /* Nav */
+  nav {
+    padding: 0 16px !important;
+  }
+
+  /* Room Grid */
+  .room-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Hero */
+  .hero-title {
+    font-size: 64px !important;
+    letter-spacing: 8px !important;
+  }
+
+  /* Token Room */
+  .room-body {
+    flex-direction: column !important;
+  }
+
+  .room-right {
+    width: 100% !important;
+  }
+
+  /* Leaderboard podium */
+  .podium-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Tokenomics */
+  .tokenomics-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Roadmap */
+  .roadmap-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-title {
+    font-size: 48px !important;
+    letter-spacing: 4px !important;
+  }
+
+  .roadmap-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .stat-row {
+    flex-wrap: wrap !important;
+    gap: 16px !important;
+  }
+}
