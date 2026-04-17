@@ -15,7 +15,7 @@ const CACHE_TTL = 60 * 1000 // 1 minute
 // Pre-warm cache on startup
 async function warmCache() {
   try {
-    const rooms = await fetchRooms('pepe sol')
+    const rooms = await fetchRooms('pump sol meme')
     if (rooms.length > 0) {
       cachedRooms = rooms
       cacheTime = Date.now()
@@ -52,7 +52,7 @@ app.get('/api/rooms', async (req, res) => {
     return res.json({ rooms: rooms.slice(0, parseInt(limit)), total: rooms.length, cached: true })
   }
 
-  const q = search || 'pepe sol'
+  const q = search || 'pump sol meme'
   try {
     let rooms = await fetchRooms(q)
     if (sort === 'new') rooms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
