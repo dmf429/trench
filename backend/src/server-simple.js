@@ -12,7 +12,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok', service: 'TRENCH backe
 
 app.get('/api/rooms', async (req, res) => {
   const { sort = 'volume', search = '', limit = '30' } = req.query
-  const q = search || 'solana meme'
+  const q = search || 'pepe sol'
   try {
     const r = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
       headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
