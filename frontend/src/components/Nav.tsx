@@ -29,7 +29,7 @@ export default function Nav({ active = '' }) {
   }
 
   const tr = (a) => a ? `${a.slice(0,4)}...${a.slice(-4)}` : ''
-  const links = [['/', 'ROOMS'],['/tracker','TRACKER'],['/leaderboard','LEADERBOARD'],['/token','$TRENCH']]
+  const links = [['/', 'ROOMS'],['/tracker','TRACKER'],['/leaderboard','LEADERBOARD'],['/token','$TRENCH'],['/radar','📡 RADAR']]
 
   return (
     <nav style={{position:'fixed',top:0,left:0,right:0,zIndex:1000,height:'52px',background:'rgba(5,5,8,0.97)',borderBottom:'1px solid #1a1a2e',backdropFilter:'blur(12px)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px'}}>
