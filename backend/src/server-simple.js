@@ -7,33 +7,81 @@ const server = http.createServer(app)
 app.use(cors({ origin: '*' }))
 app.use(express.json())
 
+// ── Cache ──────────────────────────────────────────────
+let cachedRooms = []
+let cacheTime = 0
+const CACHE_TTL = 60 * 1000 // 1 minute
+
+// Pre-warm cache on startup
+async function warmCache() {
+  try {
+    const rooms = await fetchRooms('pepe sol')
+    if (rooms.length > 0) {
+      cachedRooms = rooms
+      cacheTime = Date.now()
+      console.log(`[cache] Warmed with ${rooms.length} rooms`)
+    }
+  } catch (e) {
+    console.error('[cache] Warm failed:', e.message)
+  }
+}
+
+async function fetchRooms(q) {
+  const r = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(8000)
+  })
+  const data = await r.json()
+  return (data.pairs ?? [])
+    .filter(p => p.chainId === 'solana' && (p.liquidity?.usd ?? 0) > 1000 && p.baseToken?.symbol)
+    .map(buildRoom)
+}
+
 app.get('/', (req, res) => res.json({ service: 'TRENCH', status: 'ok' }))
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'TRENCH backend', ts: new Date().toISOString() }))
+app.get('/health', (req, res) => res.json({ status: 'ok', service: 'TRENCH backend', ts: new Date().toISOString(), cached: cachedRooms.length }))
 
 app.get('/api/rooms', async (req, res) => {
   const { sort = 'volume', search = '', limit = '30' } = req.query
-  const q = search || 'pepe sol'
-  try {
-    const r = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
-    })
-    const data = await r.json()
-    let rooms = (data.pairs ?? [])
-      .filter(p => p.chainId === 'solana' && (p.liquidity?.usd ?? 0) > 1000 && p.baseToken?.symbol)
-      .map(buildRoom)
+
+  // Serve from cache if fresh and no search
+  if (!search && cachedRooms.length > 0 && Date.now() - cacheTime < CACHE_TTL) {
+    let rooms = [...cachedRooms]
     if (sort === 'new') rooms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     else if (sort === 'health') rooms.sort((a, b) => b.healthScore - a.healthScore)
     else rooms.sort((a, b) => b.volume24h - a.volume24h)
+    return res.json({ rooms: rooms.slice(0, parseInt(limit)), total: rooms.length, cached: true })
+  }
+
+  const q = search || 'pepe sol'
+  try {
+    let rooms = await fetchRooms(q)
+    if (sort === 'new') rooms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    else if (sort === 'health') rooms.sort((a, b) => b.healthScore - a.healthScore)
+    else rooms.sort((a, b) => b.volume24h - a.volume24h)
+
+    // Update cache if not a search
+    if (!search && rooms.length > 0) {
+      cachedRooms = rooms
+      cacheTime = Date.now()
+    }
+
     return res.json({ rooms: rooms.slice(0, parseInt(limit)), total: rooms.length })
   } catch (err) {
     console.error('[rooms error]', err.message)
+    // Serve stale cache if available
+    if (cachedRooms.length > 0) {
+      return res.json({ rooms: cachedRooms.slice(0, parseInt(limit)), total: cachedRooms.length, stale: true })
+    }
     return res.json({ rooms: FALLBACK, total: FALLBACK.length })
   }
 })
 
 app.get('/api/rooms/:id', async (req, res) => {
   try {
-    const r = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${req.params.id}`, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+    const r = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${req.params.id}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(8000)
+    })
     const data = await r.json()
     if (!data.pair) return res.status(404).json({ error: 'Not found' })
     res.json(buildRoom(data.pair))
@@ -46,15 +94,17 @@ app.get('/api/search', async (req, res) => {
   try {
     const { q } = req.query
     if (!q) return res.json({ results: [] })
-    const r = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } })
-    const data = await r.json()
-    res.json({ results: (data.pairs ?? []).filter(p => p.chainId === 'solana').slice(0, 10) })
+    const rooms = await fetchRooms(q)
+    res.json({ results: rooms.slice(0, 10) })
   } catch { res.json({ results: [] }) }
 })
 
 app.get('/api/trending', async (req, res) => {
   try {
-    const r = await fetch('https://api.dexscreener.com/token-boosts/top/v1', { headers: { 'User-Agent': 'Mozilla/5.0' } })
+    const r = await fetch('https://api.dexscreener.com/token-boosts/top/v1', {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(8000)
+    })
     const data = await r.json()
     res.json({ trending: (Array.isArray(data) ? data : []).filter(t => t.chainId === 'solana').slice(0, 10) })
   } catch { res.json({ trending: [] }) }
@@ -68,7 +118,6 @@ function buildRoom(p) {
     priceChange24h: p.priceChange?.h24 ?? 0,
     priceChange1h: p.priceChange?.h1 ?? 0,
     volume24h: p.volume?.h24 ?? 0,
-    volume1h: p.volume?.h1 ?? 0,
     liquidity: p.liquidity?.usd ?? 0,
     marketCap: p.marketCap ?? p.fdv ?? 0,
     healthScore: calcHealth(p),
@@ -110,9 +159,9 @@ function calcHealth(p) {
 }
 
 const FALLBACK = [
-  { id: 'f1', token: { address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', name: 'Bonk', symbol: 'BONK', logoUri: null, decimals: 5, createdAt: new Date() }, price: 0.00002847, priceChange24h: 12.4, priceChange1h: 1.2, volume24h: 48200000, volume1h: 2100000, liquidity: 12400000, marketCap: 1840000000, healthScore: 82, buys24h: 24821, sells24h: 18204, kolSentiment: { total: 0, holding: 0, sold: 0, holdingPercent: 0, avgEntryPrice: 0, avgBagValueUsd: 0, avgBagValueSol: 0 }, memberCount: 842, messageCount: 4201, flagCount: 0, isActive: true, createdAt: new Date(), dexUrl: 'https://dexscreener.com/solana/bonk', dexId: 'raydium' },
-  { id: 'f2', token: { address: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', name: 'dogwifhat', symbol: 'WIF', logoUri: null, decimals: 6, createdAt: new Date() }, price: 1.24, priceChange24h: -4.2, priceChange1h: -0.8, volume24h: 82400000, volume1h: 4200000, liquidity: 28000000, marketCap: 1240000000, healthScore: 78, buys24h: 18420, sells24h: 14210, kolSentiment: { total: 0, holding: 0, sold: 0, holdingPercent: 0, avgEntryPrice: 0, avgBagValueUsd: 0, avgBagValueSol: 0 }, memberCount: 1204, messageCount: 8420, flagCount: 0, isActive: true, createdAt: new Date(), dexUrl: 'https://dexscreener.com/solana/wif', dexId: 'raydium' },
-  { id: 'f3', token: { address: '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', name: 'Popcat', symbol: 'POPCAT', logoUri: null, decimals: 9, createdAt: new Date() }, price: 0.482, priceChange24h: 8.7, priceChange1h: 1.2, volume24h: 24100000, volume1h: 1200000, liquidity: 8200000, marketCap: 482000000, healthScore: 71, buys24h: 12400, sells24h: 9800, kolSentiment: { total: 0, holding: 0, sold: 0, holdingPercent: 0, avgEntryPrice: 0, avgBagValueUsd: 0, avgBagValueSol: 0 }, memberCount: 421, messageCount: 2104, flagCount: 0, isActive: true, createdAt: new Date(), dexUrl: 'https://dexscreener.com/solana/popcat', dexId: 'raydium' },
+  { id: 'f1', token: { address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', name: 'Bonk', symbol: 'BONK', logoUri: null, decimals: 5, createdAt: new Date() }, price: 0.00002847, priceChange24h: 12.4, priceChange1h: 1.2, volume24h: 48200000, liquidity: 12400000, marketCap: 1840000000, healthScore: 82, buys24h: 24821, sells24h: 18204, kolSentiment: { total: 0, holding: 0, sold: 0, holdingPercent: 0, avgEntryPrice: 0, avgBagValueUsd: 0, avgBagValueSol: 0 }, memberCount: 842, messageCount: 4201, flagCount: 0, isActive: true, createdAt: new Date(), dexUrl: 'https://dexscreener.com/solana/bonk', dexId: 'raydium' },
+  { id: 'f2', token: { address: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', name: 'dogwifhat', symbol: 'WIF', logoUri: null, decimals: 6, createdAt: new Date() }, price: 1.24, priceChange24h: -4.2, priceChange1h: -0.8, volume24h: 82400000, liquidity: 28000000, marketCap: 1240000000, healthScore: 78, buys24h: 18420, sells24h: 14210, kolSentiment: { total: 0, holding: 0, sold: 0, holdingPercent: 0, avgEntryPrice: 0, avgBagValueUsd: 0, avgBagValueSol: 0 }, memberCount: 1204, messageCount: 8420, flagCount: 0, isActive: true, createdAt: new Date(), dexUrl: 'https://dexscreener.com/solana/wif', dexId: 'raydium' },
+  { id: 'f3', token: { address: '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', name: 'Popcat', symbol: 'POPCAT', logoUri: null, decimals: 9, createdAt: new Date() }, price: 0.482, priceChange24h: 8.7, priceChange1h: 1.2, volume24h: 24100000, liquidity: 8200000, marketCap: 482000000, healthScore: 71, buys24h: 12400, sells24h: 9800, kolSentiment: { total: 0, holding: 0, sold: 0, holdingPercent: 0, avgEntryPrice: 0, avgBagValueUsd: 0, avgBagValueSol: 0 }, memberCount: 421, messageCount: 2104, flagCount: 0, isActive: true, createdAt: new Date(), dexUrl: 'https://dexscreener.com/solana/popcat', dexId: 'raydium' },
 ]
 
 const KOLS = [
@@ -126,4 +175,10 @@ const KOLS = [
 ]
 
 const PORT = parseInt(process.env.PORT) || 3000
-server.listen(PORT, '0.0.0.0', () => console.log(`TRENCH backend running on port ${PORT}`))
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`TRENCH backend running on port ${PORT}`)
+  // Warm cache immediately on boot
+  warmCache()
+  // Refresh cache every 90 seconds
+  setInterval(warmCache, 90 * 1000)
+})
