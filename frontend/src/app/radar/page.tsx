@@ -13,18 +13,18 @@ const tr = (a) => a?`${a.slice(0,4)}...${a.slice(-4)}`:''
 
 // Real pump.fun tokens with actual DexScreener charts
 const REAL_TOKENS = [
-  { symbol:'BONK', name:'Bonk', address:'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', pairAddress:'8QaXeHBrShJTdtN1rNqpUcgXd4JKEaHTHQgBexU8VJCu', color:'#FF6B35' },
-  { symbol:'WIF',  name:'dogwifhat', address:'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', pairAddress:'EP2ib6dYdEeqD8MfE2ezHCxX3kP3K2eLKkirfPm5eyMx', color:'#4ECDC4' },
+  { symbol:'BONK', name:'Bonk', address:'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', pairAddress:'6oFWm7KPLfxnwMb3z5xwBoXNSPP3JJyirAPqPSiVcnsp', color:'#FF6B35' },
+  { symbol:'WIF', name:'dogwifhat', address:'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', pairAddress:'EP2ib6dYdEeqD8MfE2ezHCxX3kP3K2eLKkirfPm5eyMx', color:'#4ECDC4' },
   { symbol:'POPCAT', name:'Popcat', address:'7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', pairAddress:'FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo', color:'#FF9F43' },
   { symbol:'MEW', name:'cat in a dogs world', address:'MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5', pairAddress:'879F697iuDJGMevRkRcnW21fcXiAeLJK1ffsw2ATebce', color:'#A29BFE' },
   { symbol:'BOME', name:'BOOK OF MEME', address:'ukHH6c7mMyiWCf1b9pnWe25TSpkDDt3H5pQZgZ74J82', pairAddress:'DSUvc5qf5LJHHV5e2tD184ixotSnCnwj7i4jJa4Xsrmt', color:'#FD79A8' },
-  { symbol:'MOODENG', name:'moo deng', address:'ED5nyyWEzpPPiWimP8vYm7sD7TD3LAt3Q3gRTWHzc8eu', pairAddress:'B4tKZGMvgpWRdTQVMDMVYv3BPvHrEXFUxExS6bVCxuUG', color:'#55EFC4' },
-  { symbol:'PNUT', name:'Peanut the Squirrel', address:'2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump', pairAddress:'7kgkDpbvgFdQCKFDYBqRgBGFz2pjCJNXqtnnZDuFCZXs', color:'#FDCB6E' },
-  { symbol:'FARTCOIN', name:'Fartcoin', address:'9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump', pairAddress:'Bzc9NZfMqkXR6fz1DBph7BDf9BroyKd9rxMjKkFAVATa', color:'#00B894' },
-  { symbol:'GOAT', name:'Goatseus Maximus', address:'CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump', pairAddress:'4mFHq2M59U5oQVYTdJjB24q5dBQVXaAPbAQdsSdpump', color:'#E17055' },
-  { symbol:'NEET', name:'NotInEmploymentEducation', address:'Ce2gx9KGXJ6C9Mp5b5x1sn9Mg87JwEbrQby4Zqo3pump', pairAddress:'5wNu5QhdpRGrL37ffcd6TMMqZugQgxwafgz477rShtHy', color:'#74B9FF' },
+  { symbol:'NEET', name:'NEET', address:'Ce2gx9KGXJ6C9Mp5b5x1sn9Mg87JwEbrQby4Zqo3pump', pairAddress:'5wNu5QhdpRGrL37ffcd6TMMqZugQgxwafgz477rShtHy', color:'#74B9FF' },
   { symbol:'SPIKE', name:'SPIKE', address:'BFiGUxnidogqcZAPVPDZRCfhx3nXnFLYqpQUaUGpump', pairAddress:'DeSYSGeEj9ytT55E9AmdFs9p2cm5fryXt61kGCammCrB', color:'#FD79A8' },
-  { symbol:'POPCAT2', name:'Popcat V2', address:'7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', pairAddress:'DNsB9ERJmcHyFUAQLStDTLeMbZvkTaoemeuXNDQgda8R', color:'#6C5CE7' },
+  { symbol:'memecoin', name:'just a memecoin', address:'Bb4jR951QtVjeFAYFLBYXDSMKjbTDroCLPbFLdd7pump', pairAddress:'EbpUDz8ekE1TavcRAsMAaeGZk3wJveESRxMiDmxUYXAY', color:'#00B894' },
+  { symbol:'JINDO', name:'JINDOGE', address:'Gaqt6hKqBSRga8pfJ43CfTbc9ZGw8ostPnjytfbNpump', pairAddress:'9sLHkSy7Vx33xVDL2mQxsFMd7D7MS661dXLnm3y6dNp2', color:'#E17055' },
+  { symbol:'meowl', name:'meowl the owl cat', address:'8ryRQD6jWfxnSdvvVbQ8Tzwo1NgGP7w1X1nQPpb4pump', pairAddress:'7X7TqM1xEQioAQtxri9UBVVChLvjacQARZKzWfX7T2Ao', color:'#FDCB6E' },
+  { symbol:'nub', name:'nubcat', address:'GtDZKAqvMZMnti46ZewMiXCa4oXF4bZxwQPoKzXPFxZn', pairAddress:'83G6VzJzLRCnHBsLATj94VCpRimyyqwuN6ZfL11McADL', color:'#6C5CE7' },
+  { symbol:'CHIBI', name:'Chibification', address:'2TpMjYXnrgxoeVCq2i6EAR8vNWqe5MNvHCz3bENNpump', pairAddress:'HJAqvquMLHxcx7BYwDixukJM4zYBaTDG69uDWbo18zv', color:'#55EFC4' },
 ]
 
 const COLORS = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9','#FF9F43','#A29BFE']
