@@ -558,8 +558,6 @@ export default function RadarPage() {
     )
   }
 
-  const solLogo = '◎'
-
   return (
     <div style={{height:'100vh',display:'flex',flexDirection:'column',background:'#050508',color:'#e0e0f0',fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
       <Nav active="/radar"/>
