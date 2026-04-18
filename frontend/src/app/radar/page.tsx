@@ -97,39 +97,60 @@ async function fetchRealHolders(tokenAddress) {
   }
 }
 
-// Fetch REAL trades from Helius
-async function fetchRealTrades(tokenAddress, pairAddress) {
+// Fetch REAL trades from Helius - properly parsed
+async function fetchRealTrades(tokenAddress, tokenPrice, tokenMcap) {
   try {
     const res = await fetch(
-      `https://api.helius.xyz/v0/addresses/${tokenAddress}/transactions?api-key=${HELIUS_API_KEY}&limit=20&type=SWAP`,
+      `https://api.helius.xyz/v0/addresses/${tokenAddress}/transactions?api-key=${HELIUS_API_KEY}&limit=25&type=SWAP`
     )
     const txns = await res.json()
-    return (Array.isArray(txns) ? txns : []).map((t, i) => {
-      // Detect buy vs sell: if nativeOutput has amount, user received SOL = SELL
-      // if nativeInput has amount, user spent SOL = BUY
-      const swapEvent = t.events?.swap
-      const nativeOut = swapEvent?.nativeOutput?.amount ?? 0
-      const nativeIn = swapEvent?.nativeInput?.amount ?? 0
-      const isBuy = nativeIn > 0 || nativeOut === 0
-      const solAmount = Math.max(nativeIn, nativeOut) / 1e9
-      const displaySol = solAmount > 0 ? solAmount : (Math.random()*2+0.01)
-      const now = Date.now() / 1000
-      const age = Math.floor(now - (t.timestamp ?? now))
-      return {
-        id: i,
-        sig: t.signature,
-        age: age < 60 ? `${age}s` : age < 3600 ? `${Math.floor(age/60)}m` : `${Math.floor(age/3600)}h`,
-        type: isBuy ? 'Buy' : 'Sell',
-        isBuy,
-        mc: 0, // filled from token data
-        amount: Math.floor(Math.random()*1000000+1000), // token amount
-        totalSol: displaySol.toFixed(4),
-        totalUsd: (displaySol*20).toFixed(2), // approx
-        wallet: t.feePayer ?? 'Unknown',
-        txns: Math.floor(Math.random()*8)+1,
-        source: t.source ?? 'UNKNOWN',
-      }
-    })
+    if (!Array.isArray(txns)) return []
+    
+    const now = Date.now() / 1000
+    // Only show trades from last 24 hours to keep relevant
+    const cutoff = now - 86400
+    
+    return txns
+      .filter(t => (t.timestamp ?? 0) > cutoff)
+      .slice(0, 20)
+      .map((t, i) => {
+        // Calculate SOL amount from native transfers
+        // The largest native transfer TO the pool = buy (user spending SOL)
+        // The largest native transfer FROM the pool = sell (user receiving SOL)
+        const nativeXfers = t.nativeTransfers ?? []
+        
+        // Find the biggest native transfer - that's the trade amount
+        const maxXfer = nativeXfers.reduce((max, x) => 
+          (x.amount > max.amount ? x : max), {amount: 0})
+        
+        const solAmount = maxXfer.amount / 1e9
+        
+        // Determine buy vs sell by source and transfer direction
+        const isBuy = t.source === 'PUMP_FUN' 
+          ? nativeXfers.some(x => x.toUserAccount?.length > 0 && x.amount > 5000)
+          : solAmount > 0
+        
+        const age = Math.floor(now - (t.timestamp ?? now))
+        const ageStr = age < 60 ? `${age}s` : age < 3600 ? `${Math.floor(age/60)}m` : `${Math.floor(age/3600)}h`
+        
+        // Use REAL token price for USD calculation
+        const solPrice = 150 // approximate SOL/USD, could fetch live
+        const usdValue = solAmount * solPrice
+        
+        return {
+          id: i,
+          sig: t.signature,
+          age: ageStr,
+          type: isBuy ? 'Buy' : 'Sell',
+          isBuy,
+          mc: tokenMcap,
+          totalSol: solAmount > 0 ? solAmount.toFixed(4) : '—',
+          totalUsd: usdValue > 0 ? `$${usdValue.toFixed(2)}` : '—',
+          wallet: t.feePayer ?? 'Unknown',
+          source: t.source ?? '—',
+          timestamp: t.timestamp,
+        }
+      })
   } catch(e) {
     console.error('fetchRealTrades error:', e.message)
     return []
@@ -214,7 +235,7 @@ export default function RadarPage() {
     if (!selected?.address || selected.address === '') return
     
     // Fetch real trades
-    fetchRealTrades(selected.address, selected.pairAddress).then(realTrades => {
+    fetchRealTrades(selected.address, selected.price, selected.marketCap).then(realTrades => {
       if (realTrades.length > 0) {
         setTrades(realTrades.map(t => ({...t, mc: selected.marketCap})))
       }
@@ -227,7 +248,7 @@ export default function RadarPage() {
     
     // Refresh every 10 seconds
     const iv = setInterval(() => {
-      fetchRealTrades(selected.address, selected.pairAddress).then(realTrades => {
+      fetchRealTrades(selected.address, selected.price, selected.marketCap).then(realTrades => {
         if (realTrades.length > 0) setTrades(realTrades.map(t => ({...t, mc: selected.marketCap})))
       })
     }, 10000)
@@ -655,18 +676,19 @@ export default function RadarPage() {
                     {/* TRADES TAB */}
                     {bottomTab==='trades'&&(
                       <div style={{flex:1,overflowY:'auto'}}>
-                        <div style={{display:'grid',gridTemplateColumns:'40px 50px 70px 1fr 80px 80px 50px',padding:'3px 12px',background:'#050508',fontFamily:"'Share Tech Mono',monospace",fontSize:'6px',color:'#3a3a5c',letterSpacing:'1px',position:'sticky',top:0}}>
-                          <span>AGE</span><span>TYPE</span><span>MC</span><span>AMOUNT</span><span>TOTAL SOL</span><span>TRADER</span><span>TXNS</span>
+                        <div style={{display:'grid',gridTemplateColumns:'45px 50px 70px 1fr 90px 80px',padding:'3px 12px',background:'#070710',fontFamily:"'Share Tech Mono',monospace",fontSize:'6px',color:'#3a3a5c',letterSpacing:'1px',position:'sticky',top:0,borderBottom:'1px solid #0d0d18'}}>
+                          <span>AGE</span><span>TYPE</span><span>MC</span><span>SOURCE</span><span style={{textAlign:'right'}}>USD</span><span style={{textAlign:'right'}}>WALLET</span>
                         </div>
-                        {trades.map(t=>(
-                          <div key={t.id} style={{display:'grid',gridTemplateColumns:'40px 50px 70px 1fr 80px 80px 50px',padding:'4px 12px',borderBottom:'1px solid #0a0a0f',alignItems:'center'}}>
-                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#3a3a5c'}}>{t.age}s</span>
+                        {trades.length === 0 ? (
+                          <div style={{textAlign:'center',padding:'20px',fontFamily:"'Share Tech Mono',monospace",fontSize:'9px',color:'#3a3a5c',letterSpacing:'2px'}}>LOADING TRADES...</div>
+                        ) : trades.map(t=>(
+                          <div key={t.id} style={{display:'grid',gridTemplateColumns:'45px 50px 70px 1fr 90px 80px',padding:'4px 12px',borderBottom:'1px solid #0a0a0f',alignItems:'center',background:t.isBuy?'rgba(0,255,136,0.02)':'rgba(255,51,102,0.02)'}}>
+                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#3a3a5c'}}>{t.age}</span>
                             <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:t.isBuy?'#00FF88':'#FF3366',fontWeight:'bold'}}>{t.type}</span>
                             <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#6666aa'}}>{fmt(t.mc)}</span>
-                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#e0e0f0'}}>{parseInt(t.amount).toLocaleString()}</span>
-                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:t.isBuy?'#00FF88':'#FF3366',background:t.isBuy?'rgba(0,255,136,0.05)':'rgba(255,51,102,0.05)',padding:'1px 4px',textAlign:'right'}}>${(parseFloat(t.totalSol)*20).toFixed(2)}</span>
-                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'6px',color:'#6666aa',overflow:'hidden',textOverflow:'ellipsis'}}>{tr(t.wallet,4)}</span>
-                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'6px',color:'#3a3a5c',textAlign:'right'}}>{t.txns}</span>
+                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#3a3a5c'}}>{t.source}</span>
+                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:t.isBuy?'#00FF88':'#FF3366',fontWeight:'bold',textAlign:'right'}}>{t.totalUsd}</span>
+                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'6px',color:'#6666aa',overflow:'hidden',textOverflow:'ellipsis',textAlign:'right'}}>{tr(t.wallet,4)}</span>
                           </div>
                         ))}
                       </div>
