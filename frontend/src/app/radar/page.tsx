@@ -8,6 +8,9 @@ const HELIUS_KEY = '870dfde6-09ec-48bd-95b8-202303d15c5b'
 const HELIUS_RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
 const DEVNET_RPC = 'https://api.devnet.solana.com'
 const BULLX_WS = 'wss://stream.bullx.io/app/prowess-frail-sensitive?protocol=7&client=js&version=8.4.0-rc2&flash=false'
+const MOBULA_WS = 'wss://api.mobula.io'
+const AXIOM_API = 'https://axiom.trade/api'
+const AXIOM_CDN = 'https://axiomtrading.sfo3.cdn.digitaloceanspaces.com'
 const SOLANA_CHAIN_ID = '1399811149'
 const BULLX_CHANNEL = 'new-pairsv2-' + SOLANA_CHAIN_ID
 let cachedSolPrice = 150
@@ -132,6 +135,62 @@ async function fetchTopTraders(tokenAddress) {
   } catch { return [] }
 }
 
+// Fetch REAL token security info from Axiom's API
+async function fetchAxiomTokenInfo(pairAddress) {
+  try {
+    // Try multiple Axiom API servers
+    for (const base of ['https://api.axiom.trade','https://api2.axiom.trade','https://axiom.trade/api']) {
+      try {
+        const r = await fetch(base+'/token-info/'+pairAddress, {
+          headers: {'accept':'application/json','origin':'https://axiom.trade','referer':'https://axiom.trade/'}
+        })
+        if (r.ok) {
+          const d = await r.json()
+          return {
+            numHolders: d.numHolders||0,
+            top10HoldersPercent: d.top10HoldersPercent||0,
+            devHoldsPercent: d.devHoldsPercent||0,
+            insidersHoldPercent: d.insidersHoldPercent||0,
+            bundlersHoldPercent: d.bundlersHoldPercent||0,
+            snipersHoldPercent: d.snipersHoldPercent||0,
+            dexPaid: d.dexPaid||false,
+            totalPairFeesPaid: d.totalPairFeesPaid||0,
+          }
+        }
+      } catch {}
+    }
+    return null
+  } catch { return null }
+}
+
+// Fetch REAL pair info from Axiom - lpBurned, deployer, devWalletFunding
+async function fetchAxiomPairInfo(pairAddress) {
+  try {
+    for (const base of ['https://api.axiom.trade','https://api2.axiom.trade']) {
+      try {
+        const r = await fetch(base+'/pair-info/'+pairAddress, {
+          headers: {'accept':'application/json','origin':'https://axiom.trade','referer':'https://axiom.trade/'}
+        })
+        if (r.ok) {
+          const d = await r.json()
+          return {
+            lpBurned: d.lpBurned||0,
+            deployerAddress: d.deployerAddress||'',
+            protocol: d.protocol||'',
+            top10Holders: d.top10Holders||0,
+            tokenImage: d.tokenImage||null,
+            twitter: d.twitter||null,
+            telegram: d.telegram||null,
+            website: d.website||null,
+            dexPaid: d.dexPaid||false,
+          }
+        }
+      } catch {}
+    }
+    return null
+  } catch { return null }
+}
+
 async function fetchGeckoOHLCV(tokenAddress, timeframe='1', limit=300) {
   try {
     // Find pool via GeckoTerminal
@@ -185,8 +244,12 @@ export default function RadarPage() {
   const pumpWs=useRef(null)
   const bullXWs=useRef(null)
   const bullXPing=useRef(null)
+  const mobulaWs=useRef(null)
   const [wsConnected,setWsConnected]=useState(false)
   const [bullXConnected,setBullXConnected]=useState(false)
+  const [mobulaConnected,setMobulaConnected]=useState(false)
+  const [tokenInfo,setTokenInfo]=useState(null)
+  const [pairInfo,setPairInfo]=useState(null)
   const [chartTimeframe,setChartTimeframe]=useState('1') // minutes
   const chartRef=useRef(null)
   const chartInstanceRef=useRef(null)
@@ -312,6 +375,143 @@ export default function RadarPage() {
           setBullXConnected(false)
           clearInterval(pingTimer)
           reconnectTimer = setTimeout(connect, 3000)
+        }
+        ws.onerror = () => ws.close()
+      } catch {}
+    }
+    connect()
+    return () => {
+      clearTimeout(reconnectTimer)
+      clearInterval(pingTimer)
+      if (ws) ws.close()
+    }
+  },[])
+
+  // Mobula Pulse WebSocket - same source as Axiom Pulse
+  useEffect(()=>{
+    let ws, reconnectTimer, pingTimer
+    const connect = () => {
+      try {
+        ws = new WebSocket(MOBULA_WS)
+        mobulaWs.current = ws
+        ws.onopen = () => {
+          setMobulaConnected(true)
+          ws.send(JSON.stringify({
+            type: 'pulse-v2',
+            payload: {
+              model: 'default',
+              assetMode: true,
+              chainId: ['solana:solana'],
+              poolTypes: ['pumpfun'],
+              compressed: false,
+            }
+          }))
+          // Ping every 15s
+          pingTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({event:'ping'}))
+          }, 15000)
+        }
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg.event === 'pong') return
+            
+            const mobulaViewToStage = {new:'new', bonding:'stretch', bonded:'migrated'}
+            
+            const transformToken = (data, viewName) => {
+              const t = data.token || {}
+              const mcap = data.market_cap || data.latest_market_cap || t.marketCap || 0
+              const stage = mobulaViewToStage[viewName] || 'new'
+              const addr = t.address || ''
+              return {
+                id: addr, symbol: t.symbol||'???', name: t.name||'Unknown',
+                address: addr, pairAddress: addr,
+                color: COLORS[Math.abs((addr.charCodeAt(0)||0)+(addr.charCodeAt(1)||0))%COLORS.length],
+                price: data.latest_price||t.price||0,
+                marketCap: mcap, liquidity: t.liquidity||0,
+                volume5m: data.volume_5min||0, volume1h: data.volume_1h||0,
+                priceChange5m: data.price_change_5min||0, priceChange1h: data.price_change_1h||0,
+                buys5m: data.trades_5min||0, sells5m: 0,
+                buys1h: data.buys_1h||0, sells1h: data.sells_1h||0,
+                age: data.created_at ? Date.now()-new Date(data.created_at).getTime() : 0,
+                bondingCurve: t.bondingPercentage || (t.bonded?100:Math.min(99,Math.round((mcap/69000)*100))),
+                holders: t.holdersCount||0, stage,
+                logoUri: t.logo||t.originLogoUrl||null,
+                dexId: stage==='migrated'?'pumpswap':'pumpfun',
+                supply: '1B',
+                website: data.socials?.website||null,
+                twitter: data.socials?.twitter||null,
+                telegram: data.socials?.telegram||null,
+                globalFeesPaid: '0', pairCreatedAt: data.created_at?new Date(data.created_at).getTime():Date.now(),
+                // Real security data from Mobula
+                smartTraders: t.smartTradersCount||0,
+                snipers: t.snipersCount||0,
+                insiders: t.insidersCount||0,
+                deployer: t.deployer||'',
+                source: 'mobula'
+              }
+            }
+            
+            if (msg.type === 'init') {
+              // Bulk init - populates all 3 columns
+              for (const [viewName, viewData] of Object.entries(msg.payload||{})) {
+                if (!viewData?.data) continue
+                const stage = mobulaViewToStage[viewName]
+                if (!stage) continue
+                const tokens = viewData.data.map(d => transformToken(d, viewName)).filter(t=>t.address)
+                if (stage==='new') setNewPairs(prev => {
+                  const seen = new Set(prev.map(t=>t.id))
+                  return [...tokens.filter(t=>!seen.has(t.id)), ...prev].slice(0,20)
+                })
+                else if (stage==='stretch') setStretch(prev => {
+                  const seen = new Set(prev.map(t=>t.id))
+                  return [...tokens.filter(t=>!seen.has(t.id)), ...prev].slice(0,20)
+                })
+                else setMigrated(prev => {
+                  const seen = new Set(prev.map(t=>t.id))
+                  return [...tokens.filter(t=>!seen.has(t.id)), ...prev].slice(0,20)
+                })
+              }
+            } else if (msg.type === 'new-token') {
+              const {viewName, token: tokenData} = msg.payload||{}
+              if (!tokenData) return
+              const t = transformToken(tokenData, viewName)
+              if (!t.address) return
+              const stage = mobulaViewToStage[viewName]
+              if (stage==='new') setNewPairs(prev=>[t,...prev.filter(x=>x.id!==t.id)].slice(0,20))
+              else if (stage==='stretch') setStretch(prev=>[t,...prev.filter(x=>x.id!==t.id)].slice(0,20))
+              else setMigrated(prev=>[t,...prev.filter(x=>x.id!==t.id)].slice(0,20))
+            } else if (msg.type === 'update-token' || msg.type === 'update') {
+              const payload = msg.payload||{}
+              const updates = msg.type==='update-token' 
+                ? [{viewName:payload.viewName, data:payload.token}]
+                : Object.entries(payload).flatMap(([vn,vd])=>(vd.data||[]).map(d=>({viewName:vn,data:d})))
+              
+              updates.forEach(({viewName, data}) => {
+                if (!data) return
+                const t = transformToken(data, viewName)
+                if (!t.address) return
+                const stage = mobulaViewToStage[viewName]
+                // Update in correct column
+                const update = prev => prev.map(x=>x.id===t.id?{...x,...t}:x)
+                if (stage==='new') setNewPairs(update)
+                else if (stage==='stretch') setStretch(update)
+                else setMigrated(update)
+                // Update selected if it matches
+                setSelected(s=>s?.id===t.id?{...s,...t}:s)
+              })
+            } else if (msg.type === 'remove-token') {
+              const addr = msg.payload?.token?.token?.address
+              if (!addr) return
+              setNewPairs(prev=>prev.filter(t=>t.id!==addr))
+              setStretch(prev=>prev.filter(t=>t.id!==addr))
+            }
+          } catch(e) { console.error('Mobula msg error:', e) }
+        }
+        ws.onclose = () => {
+          setMobulaConnected(false)
+          clearInterval(pingTimer)
+          reconnectTimer = setTimeout(connect, 2000)
         }
         ws.onerror = () => ws.close()
       } catch {}
@@ -518,6 +718,12 @@ export default function RadarPage() {
 
   const selectToken=(token)=>{
     setSelected(token);setSideTab('buy');setBottomTab('trades');setShowSearch(false);setSearchQuery('')
+    setTokenInfo(null); setPairInfo(null)
+    // Fetch real Axiom token info + pair info
+    if (token.address) {
+      fetchAxiomTokenInfo(token.address).then(info => { if(info) setTokenInfo(info) })
+      fetchAxiomPairInfo(token.address).then(info => { if(info) setPairInfo(info) })
+    }
     // Subscribe to real-time updates for this specific token via BullX
     if(bullXWs.current?.readyState===WebSocket.OPEN) {
       bullXWs.current.send(JSON.stringify({
@@ -637,8 +843,10 @@ export default function RadarPage() {
               </div>
               <div style={{display:'flex',alignItems:'center',gap:'8px',flexShrink:0}}>
               <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
-                <div style={{width:'5px',height:'5px',borderRadius:'50%',background:wsConnected||bullXConnected?'#00FF88':'#FF3366',boxShadow:wsConnected||bullXConnected?'0 0 4px #00FF8888':undefined}}/>
-                <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:wsConnected||bullXConnected?'#00FF88':'#FF3366'}}>{wsConnected&&bullXConnected?'LIVE x2':wsConnected||bullXConnected?'LIVE':'OFFLINE'}</span>
+                <div style={{width:'5px',height:'5px',borderRadius:'50%',background:wsConnected||bullXConnected||mobulaConnected?'#00FF88':'#FF3366',boxShadow:'0 0 4px #00FF8888'}}/>
+                <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:wsConnected||bullXConnected||mobulaConnected?'#00FF88':'#FF3366'}}>
+                  {[wsConnected,bullXConnected,mobulaConnected].filter(Boolean).length > 0 ? 'LIVE x'+[wsConnected,bullXConnected,mobulaConnected].filter(Boolean).length : 'OFFLINE'}
+                </span>
               </div>
               <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'8px',color:'#3a3a5c'}}>◎ {solPrice.toFixed(0)} · {newPairs.length+stretch.length+migrated.length} PAIRS</span>
             </div>
@@ -820,7 +1028,25 @@ export default function RadarPage() {
                         </div>
                       )}
                       <div style={{borderTop:'1px solid #1a1a2e',paddingTop:'8px'}}>
-                        <div style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'8px',color:'#6666aa',marginBottom:'6px'}}>Token Info</div>
+                        <div style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'8px',color:'#6666aa',marginBottom:'6px'}}>Token Info {tokenInfo?'✓':''}</div>
+                        {tokenInfo&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'3px',marginBottom:'6px'}}>
+                          {[
+                            ['Top 10 H.',tokenInfo.top10HoldersPercent.toFixed(1)+'%',tokenInfo.top10HoldersPercent>20?'#FF3366':'#00FF88'],
+                            ['Dev H.',tokenInfo.devHoldsPercent.toFixed(1)+'%',tokenInfo.devHoldsPercent>5?'#FF3366':'#00FF88'],
+                            ['Snipers',tokenInfo.snipersHoldPercent.toFixed(1)+'%',tokenInfo.snipersHoldPercent>5?'#FF3366':'#00FF88'],
+                            ['Insiders',tokenInfo.insidersHoldPercent.toFixed(1)+'%',tokenInfo.insidersHoldPercent>10?'#FF3366':'#00FF88'],
+                            ['Bundlers',tokenInfo.bundlersHoldPercent.toFixed(1)+'%',tokenInfo.bundlersHoldPercent>5?'#FF3366':'#00FF88'],
+                            ['LP Burned',pairInfo?pairInfo.lpBurned+'%':'...',pairInfo?.lpBurned>=100?'#00FF88':'#FFD700'],
+                            ['Holders',tokenInfo.numHolders,'#e0e0f0'],
+                            ['Fees ◎',tokenInfo.totalPairFeesPaid.toFixed(4),'#A29BFE'],
+                            ['Dex Paid',tokenInfo.dexPaid?'YES':'NO',tokenInfo.dexPaid?'#00FF88':'#FF3366'],
+                          ].map(([l,v,col])=>(
+                            <div key={l} style={{background:'#0a0a10',border:'1px solid #1a1a2e',padding:'4px',textAlign:'center'}}>
+                              <div style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'5px',color:'#3a3a5c',marginBottom:'1px'}}>{l}</div>
+                              <div style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'9px',color:col,fontWeight:'bold'}}>{v}</div>
+                            </div>
+                          ))}
+                        </div>}
                         {[['Market Cap',fmt(selected.marketCap)],['Liquidity',fmt(selected.liquidity)],['Bonding',`${selected.bondingCurve}%`],['Holders',selected.holders||'...'],['Age',elapsed(selected.age)]].map(([k,v])=>(<div key={k} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #0d0d18'}}><span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#3a3a5c'}}>{k}</span><span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#e0e0f0'}}>{v}</span></div>))}
                         <button onClick={()=>{navigator.clipboard.writeText(selected.address);setTxMsg('CA COPIED');setTxStatus('success');setTimeout(()=>{setTxStatus(null);setTxMsg('')},1500)}} style={{width:'100%',marginTop:'8px',fontFamily:"'Share Tech Mono',monospace",fontSize:'6px',color:'#6666aa',background:'#0a0a10',border:'1px solid #1a1a2e',padding:'5px',cursor:'pointer',textAlign:'left',wordBreak:'break-all'}}>CA: {selected.address.slice(0,22)}...</button>
                       </div>
