@@ -18,6 +18,14 @@ const tr = (a,n=4) => a?`${a.slice(0,n)}...${a.slice(-n)}`:''
 const COLORS = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9','#FF9F43','#A29BFE','#FD79A8','#6C5CE7','#00B894','#E17055','#74B9FF','#55EFC4','#FDCB6E']
 
 function pairToToken(p, stage) {
+  // Calculate real bonding curve % from market cap
+  // pump.fun graduates at $69K mcap
+  const mcap = p.marketCap ?? p.fdv ?? 0
+  const GRAD_MCAP = 69000
+  const bondingCurvePct = p.dexId === 'pumpfun'
+    ? Math.min(99, Math.round((mcap / GRAD_MCAP) * 100))
+    : 100
+
   return {
     id: p.pairAddress,
     symbol: p.baseToken?.symbol ?? '???',
@@ -26,7 +34,7 @@ function pairToToken(p, stage) {
     pairAddress: p.pairAddress,
     color: COLORS[Math.abs((p.pairAddress?.charCodeAt(0)??0)+(p.pairAddress?.charCodeAt(1)??0)) % COLORS.length],
     price: parseFloat(p.priceUsd ?? '0'),
-    marketCap: p.marketCap ?? p.fdv ?? 0,
+    marketCap: mcap,
     liquidity: p.liquidity?.usd ?? 0,
     volume5m: p.volume?.m5 ?? 0,
     volume1h: p.volume?.h1 ?? 0,
@@ -37,7 +45,7 @@ function pairToToken(p, stage) {
     buys1h: p.txns?.h1?.buys ?? 0,
     sells1h: p.txns?.h1?.sells ?? 0,
     age: Date.now() - (p.pairCreatedAt ?? Date.now()),
-    bondingCurve: stage==='migrated'?100:stage==='stretch'?Math.random()*25+70:Math.random()*50+5,
+    bondingCurve: bondingCurvePct,
     devHolding: Math.random()*20,
     score: Math.floor(Math.random()*100),
     holders: Math.floor((p.liquidity?.usd??1000)/10)+Math.floor(Math.random()*200),
@@ -180,11 +188,16 @@ export default function RadarPage() {
   // ── Fetch real pairs ──────────────────────────────────
   const fetchPairs = useCallback(async () => {
     try {
-      const queries = ['pump sol', 'pump fun', 'solana memecoin']
+      // Query multiple terms to get diverse results
+      // pumpfun dexId = bonding curve (pre-migration) = NEW PAIRS
+      // pumpswap dexId = pump.fun's own DEX (post-graduation) = MIGRATED
+      // raydium/meteora/orca = older migrated = MIGRATED
+      const queries = ['pump sol', 'pump fun new', 'solana pump', 'pumpfun']
       const results = await Promise.allSettled(queries.map(q =>
         fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`)
           .then(r => r.json()).catch(() => ({pairs:[]}))
       ))
+
       const seen = new Set()
       const allPairs = []
       for (const r of results) {
@@ -192,26 +205,61 @@ export default function RadarPage() {
         for (const p of (r.value.pairs ?? [])) {
           if (p.chainId !== 'solana') continue
           if (seen.has(p.pairAddress)) continue
-          if ((p.liquidity?.usd ?? 0) < 300) continue
+          if ((p.liquidity?.usd ?? 0) < 100) continue
           seen.add(p.pairAddress)
           allPairs.push(p)
         }
       }
+
+      // Sort newest first
       allPairs.sort((a,b) => (b.pairCreatedAt??0)-(a.pairCreatedAt??0))
+
       const newP=[], stretchP=[], migratedP=[]
       for (const p of allPairs) {
-        const isMigrated = ['raydium','meteora','orca'].includes(p.dexId)
         const mcap = p.marketCap ?? p.fdv ?? 0
-        if (isMigrated) migratedP.push(pairToToken(p,'migrated'))
-        else if (mcap > 50000) stretchP.push(pairToToken(p,'stretch'))
-        else newP.push(pairToToken(p,'new'))
+        const dex = p.dexId
+
+        if (dex === 'pumpfun') {
+          // Still on bonding curve - pre-migration
+          if (mcap >= 60000) {
+            // Near migration threshold ($69K) = Final Stretch
+            stretchP.push(pairToToken(p, 'stretch'))
+          } else {
+            // Fresh new pair on bonding curve
+            newP.push(pairToToken(p, 'new'))
+          }
+        } else if (dex === 'pumpswap' || dex === 'raydium' || dex === 'meteora' || dex === 'orca') {
+          // Post-migration - on a real DEX
+          migratedP.push(pairToToken(p, 'migrated'))
+        } else {
+          // Other DEXes - treat as migrated
+          migratedP.push(pairToToken(p, 'migrated'))
+        }
       }
-      if (newP.length) setNewPairs(newP.slice(0,12))
-      if (stretchP.length) setStretch(stretchP.slice(0,8))
-      if (migratedP.length) setMigrated(migratedP.slice(0,12))
+
+      // Deduplicate by token address (same token can have multiple pairs)
+      const dedupNew = dedup(newP)
+      const dedupStretch = dedup(stretchP)
+      const dedupMigrated = dedup(migratedP)
+
+      if (dedupNew.length || newP.length === 0) setNewPairs((dedupNew.length ? dedupNew : newP).slice(0,15))
+      if (dedupStretch.length || stretchP.length === 0) setStretch((dedupStretch.length ? dedupStretch : stretchP).slice(0,10))
+      if (dedupMigrated.length || migratedP.length === 0) setMigrated((dedupMigrated.length ? dedupMigrated : migratedP).slice(0,15))
       setLoading(false)
-    } catch(e) { setLoading(false) }
+    } catch(e) {
+      console.error('fetchPairs error:', e)
+      setLoading(false)
+    }
   }, [])
+
+  function dedup(tokens) {
+    const seen = new Set()
+    return tokens.filter(t => {
+      if (seen.has(t.address)) return false
+      seen.add(t.address)
+      return true
+    })
+  }
 
   useEffect(() => {
     fetchPairs()
