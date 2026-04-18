@@ -214,39 +214,51 @@ export default function RadarPage() {
     setTxStatus('pending')
     setTxMsg('REQUESTING AIRDROP...')
     try {
-      const pk = new web3.PublicKey(wallet.publicKey)
-      // Use Helius devnet which is more reliable
-      const heliusConn = new web3.Connection(HELIUS_DEVNET, {
-        commitment: 'confirmed',
-        confirmTransactionInitialTimeout: 30000,
-      })
-      const sig = await heliusConn.requestAirdrop(pk, 2 * web3.LAMPORTS_PER_SOL)
-      setTxMsg('CONFIRMING...')
-      // Use a simple balance poll instead of confirmTransaction (more reliable)
-      let attempts = 0
-      while (attempts < 20) {
-        await new Promise(r => setTimeout(r, 1500))
-        const bal = await heliusConn.getBalance(pk)
-        if (bal > 0) {
-          setWallet(w => ({...w, balance: bal/web3.LAMPORTS_PER_SOL}))
-          setTxStatus('success')
-          setTxMsg('2 SOL AIRDROPPED!')
-          setTimeout(() => { setTxStatus(null); setTxMsg('') }, 3000)
-          return
-        }
-        attempts++
+      // Use public Solana devnet RPC with retry logic
+      const rpcs = [
+        'https://api.devnet.solana.com',
+        'https://rpc.ankr.com/solana_devnet',
+        'https://devnet.sonic.game',
+      ]
+      let sig = null
+      let workingConn = null
+      for (const rpc of rpcs) {
+        try {
+          const c = new web3.Connection(rpc, { commitment: 'confirmed', confirmTransactionInitialTimeout: 20000 })
+          const pk = new web3.PublicKey(wallet.publicKey)
+          sig = await c.requestAirdrop(pk, 2 * web3.LAMPORTS_PER_SOL)
+          workingConn = c
+          break
+        } catch(e) { console.log('RPC failed, trying next:', rpc, e.message) }
       }
-      // Even if confirmation times out, check balance
-      const finalBal = await heliusConn.getBalance(pk)
+      if (!sig || !workingConn) throw new Error('All RPCs failed')
+      setTxMsg('CONFIRMING...')
+      // Poll balance
+      const pk = new web3.PublicKey(wallet.publicKey)
+      for (let i = 0; i < 25; i++) {
+        await new Promise(r => setTimeout(r, 1500))
+        try {
+          const bal = await workingConn.getBalance(pk)
+          if (bal > 0) {
+            setWallet(w => ({...w, balance: bal/web3.LAMPORTS_PER_SOL}))
+            setTxStatus('success')
+            setTxMsg('2 SOL AIRDROPPED! ✓')
+            setTimeout(() => { setTxStatus(null); setTxMsg('') }, 4000)
+            return
+          }
+        } catch {}
+      }
+      // Timeout but maybe it landed
+      const finalBal = await workingConn.getBalance(pk).catch(()=>0)
       setWallet(w => ({...w, balance: finalBal/web3.LAMPORTS_PER_SOL}))
-      setTxStatus('success')
-      setTxMsg('AIRDROP SENT!')
-      setTimeout(() => { setTxStatus(null); setTxMsg('') }, 3000)
+      setTxStatus(finalBal>0?'success':'error')
+      setTxMsg(finalBal>0?'AIRDROP LANDED!':'DEVNET CONGESTED - TRY AGAIN')
+      setTimeout(() => { setTxStatus(null); setTxMsg('') }, 4000)
     } catch(e) {
       console.error('airdrop error:', e)
       setTxStatus('error')
-      setTxMsg(e.message?.slice(0,40) ?? 'AIRDROP FAILED')
-      setTimeout(() => { setTxStatus(null); setTxMsg('') }, 4000)
+      setTxMsg('DEVNET UNAVAILABLE - TRY faucet.solana.com')
+      setTimeout(() => { setTxStatus(null); setTxMsg('') }, 5000)
     }
   }
 
