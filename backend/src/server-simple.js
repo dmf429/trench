@@ -175,6 +175,109 @@ const KOLS = [
 ]
 
 const PORT = parseInt(process.env.PORT) || 3000
+
+// ── Pump.fun Chart Routes ─────────────────────────────────────────────────
+// Pump V1 (pre-migration bonding curve) candlesticks
+app.get('/api/pump/candles/:mint', async (req, res) => {
+  try {
+    const { mint } = req.params
+    const { tf = '1', limit = '200' } = req.query
+    const tfMap = {'1':'1','5':'5','15':'15','60':'60','240':'240'}
+    const timeframe = tfMap[tf] || '1'
+    
+    // Try pump.fun v2 API first
+    const r = await fetch(
+      `https://frontend-api-v2.pump.fun/candlesticks/${mint}?offset=0&limit=${limit}&timeframe=${timeframe}`,
+      { headers: { 'accept': 'application/json', 'origin': 'https://pump.fun', 'referer': 'https://pump.fun/', 'user-agent': 'Mozilla/5.0' } }
+    )
+    if (r.ok) {
+      const data = await r.json()
+      // pump.fun returns: [{open, high, low, close, volume, timestamp}, ...]
+      const candles = (Array.isArray(data) ? data : []).map(c => ({
+        time: Math.floor(new Date(c.timestamp || c.time * 1000).getTime() / 1000),
+        open: parseFloat(c.open) || 0,
+        high: parseFloat(c.high) || 0,
+        low: parseFloat(c.low) || 0,
+        close: parseFloat(c.close) || 0,
+        volume: parseFloat(c.volume) || 0,
+      })).filter(c => c.time > 0 && c.open > 0)
+      return res.json({ candles, source: 'pump-v1' })
+    }
+  } catch(e) {}
+  
+  // Fallback: try pumpportal
+  try {
+    const r2 = await fetch(
+      `https://pumpportal.fun/api/candlesticks?mint=${req.params.mint}&interval=${req.query.tf || '1'}m&limit=${req.query.limit || 200}`,
+      { headers: { 'user-agent': 'Mozilla/5.0' } }
+    )
+    if (r2.ok) {
+      const d2 = await r2.json()
+      const candles = (d2.candles || d2 || []).map(c => ({
+        time: c.time || c.timestamp,
+        open: parseFloat(c.open) || 0,
+        high: parseFloat(c.high) || 0,
+        low: parseFloat(c.low) || 0,
+        close: parseFloat(c.close) || 0,
+        volume: parseFloat(c.volume) || 0,
+      })).filter(c => c.open > 0)
+      return res.json({ candles, source: 'pumpportal' })
+    }
+  } catch(e) {}
+  
+  // Final fallback: GeckoTerminal
+  try {
+    const pr = await fetch(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${req.params.mint}/pools?page=1`)
+    const pd = await pr.json()
+    const poolAddr = pd?.data?.[0]?.attributes?.address
+    if (poolAddr) {
+      const tf = req.query.tf || '1'
+      const tfStr = tf === '60' || tf === '240' ? 'hour' : 'minute'
+      const agg = {'1':1,'5':5,'15':15,'60':1,'240':4}[tf] || 1
+      const cr = await fetch(`https://api.geckoterminal.com/api/v2/networks/solana/pools/${poolAddr}/ohlcv/${tfStr}?limit=${req.query.limit || 200}&aggregate=${agg}&currency=usd`)
+      const cd = await cr.json()
+      const list = cd?.data?.attributes?.ohlcv_list ?? []
+      const candles = list.reverse().map(([t,o,h,l,c,v]) => ({
+        time: t, open: parseFloat(o)||0, high: parseFloat(h)||0,
+        low: parseFloat(l)||0, close: parseFloat(c)||0, volume: parseFloat(v)||0
+      })).filter(c => c.open > 0)
+      return res.json({ candles, source: 'geckoterminal', poolAddr })
+    }
+  } catch(e) {}
+  
+  res.json({ candles: [], source: 'none' })
+})
+
+// Pump V1 real-time trades
+app.get('/api/pump/trades/:mint', async (req, res) => {
+  try {
+    const { mint } = req.params
+    const r = await fetch(
+      `https://frontend-api-v2.pump.fun/trades/all/${mint}?limit=50&minimumSize=0`,
+      { headers: { 'accept': 'application/json', 'origin': 'https://pump.fun', 'referer': 'https://pump.fun/', 'user-agent': 'Mozilla/5.0' } }
+    )
+    if (r.ok) {
+      const data = await r.json()
+      return res.json(data)
+    }
+  } catch(e) {}
+  res.json([])
+})
+
+// Pump AMM (post-migration) trades via PumpSwap
+app.get('/api/pumpdex/trades/:mint', async (req, res) => {
+  try {
+    const { mint } = req.params
+    // PumpSwap trades endpoint
+    const r = await fetch(
+      `https://frontend-api-v2.pump.fun/trades/all/${mint}?limit=50&minimumSize=0`,
+      { headers: { 'accept': 'application/json', 'origin': 'https://pump.fun', 'referer': 'https://pump.fun/', 'user-agent': 'Mozilla/5.0' } }
+    )
+    if (r.ok) return res.json(await r.json())
+  } catch(e) {}
+  res.json([])
+})
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`TRENCH backend running on port ${PORT}`)
   // Warm cache immediately on boot
