@@ -182,3 +182,69 @@ server.listen(PORT, '0.0.0.0', () => {
   // Refresh cache every 90 seconds
   setInterval(warmCache, 90 * 1000)
 })
+
+// Proxy for GeckoTerminal OHLCV - bypasses CORS
+app.get('/api/ohlcv/:tokenAddress', async (req, res) => {
+  try {
+    const { tokenAddress } = req.params
+    const { tf = '1', limit = '300' } = req.query
+    
+    // Find pool first
+    const poolRes = await fetch(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenAddress}/pools?page=1`)
+    const poolData = await poolRes.json()
+    const poolAddr = poolData?.data?.[0]?.attributes?.address
+    
+    if (!poolAddr) return res.json({ candles: [] })
+    
+    const tfMap = { '1': 'minute', '5': 'minute', '15': 'minute', '60': 'hour', '240': 'hour' }
+    const aggMap = { '1': 1, '5': 5, '15': 15, '60': 1, '240': 4 }
+    const tfStr = tfMap[tf] || 'minute'
+    const agg = aggMap[tf] || 1
+    
+    const ohlcvRes = await fetch(`https://api.geckoterminal.com/api/v2/networks/solana/pools/${poolAddr}/ohlcv/${tfStr}?limit=${limit}&aggregate=${agg}&currency=usd`)
+    const ohlcvData = await ohlcvRes.json()
+    const list = ohlcvData?.data?.attributes?.ohlcv_list ?? []
+    
+    const candles = list.reverse().map(([t,o,h,l,c,v]) => ({
+      time: t, open: parseFloat(o)||0, high: parseFloat(h)||0,
+      low: parseFloat(l)||0, close: parseFloat(c)||0, volume: parseFloat(v)||0
+    })).filter(c => c.open > 0)
+    
+    res.set('Cache-Control', 'no-store')
+    res.json({ candles, poolAddr })
+  } catch(e) {
+    res.json({ candles: [], error: e.message })
+  }
+})
+
+// Proxy for Axiom token info - bypasses CORS
+app.get('/api/axiom/token-info/:pairAddress', async (req, res) => {
+  try {
+    const { pairAddress } = req.params
+    for (const base of ['https://api.axiom.trade','https://api2.axiom.trade','https://api3.axiom.trade']) {
+      try {
+        const r = await fetch(`${base}/token-info/${pairAddress}`, {
+          headers: { 'accept': 'application/json', 'origin': 'https://axiom.trade', 'referer': 'https://axiom.trade/' }
+        })
+        if (r.ok) { const d = await r.json(); return res.json(d) }
+      } catch {}
+    }
+    res.json({ error: 'Axiom API unavailable' })
+  } catch(e) { res.json({ error: e.message }) }
+})
+
+// Proxy for Axiom pair info
+app.get('/api/axiom/pair-info/:pairAddress', async (req, res) => {
+  try {
+    const { pairAddress } = req.params
+    for (const base of ['https://api.axiom.trade','https://api2.axiom.trade']) {
+      try {
+        const r = await fetch(`${base}/pair-info/${pairAddress}`, {
+          headers: { 'accept': 'application/json', 'origin': 'https://axiom.trade', 'referer': 'https://axiom.trade/' }
+        })
+        if (r.ok) { const d = await r.json(); return res.json(d) }
+      } catch {}
+    }
+    res.json({ error: 'Axiom API unavailable' })
+  } catch(e) { res.json({ error: e.message }) }
+})

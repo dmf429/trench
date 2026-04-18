@@ -138,81 +138,49 @@ async function fetchTopTraders(tokenAddress) {
 // Fetch REAL token security info from Axiom's API
 async function fetchAxiomTokenInfo(pairAddress) {
   try {
-    // Try multiple Axiom API servers
-    for (const base of ['https://api.axiom.trade','https://api2.axiom.trade','https://axiom.trade/api']) {
-      try {
-        const r = await fetch(base+'/token-info/'+pairAddress, {
-          headers: {'accept':'application/json','origin':'https://axiom.trade','referer':'https://axiom.trade/'}
-        })
-        if (r.ok) {
-          const d = await r.json()
-          return {
-            numHolders: d.numHolders||0,
-            top10HoldersPercent: d.top10HoldersPercent||0,
-            devHoldsPercent: d.devHoldsPercent||0,
-            insidersHoldPercent: d.insidersHoldPercent||0,
-            bundlersHoldPercent: d.bundlersHoldPercent||0,
-            snipersHoldPercent: d.snipersHoldPercent||0,
-            dexPaid: d.dexPaid||false,
-            totalPairFeesPaid: d.totalPairFeesPaid||0,
-          }
-        }
-      } catch {}
+    const r = await fetch('https://trench-production-cd7b.up.railway.app/api/axiom/token-info/'+pairAddress)
+    if (!r.ok) return null
+    const d = await r.json()
+    if (d.error) return null
+    return {
+      numHolders: d.numHolders||0,
+      top10HoldersPercent: d.top10HoldersPercent||0,
+      devHoldsPercent: d.devHoldsPercent||0,
+      insidersHoldPercent: d.insidersHoldPercent||0,
+      bundlersHoldPercent: d.bundlersHoldPercent||0,
+      snipersHoldPercent: d.snipersHoldPercent||0,
+      dexPaid: d.dexPaid||false,
+      totalPairFeesPaid: d.totalPairFeesPaid||0,
     }
-    return null
   } catch { return null }
 }
 
 // Fetch REAL pair info from Axiom - lpBurned, deployer, devWalletFunding
 async function fetchAxiomPairInfo(pairAddress) {
   try {
-    for (const base of ['https://api.axiom.trade','https://api2.axiom.trade']) {
-      try {
-        const r = await fetch(base+'/pair-info/'+pairAddress, {
-          headers: {'accept':'application/json','origin':'https://axiom.trade','referer':'https://axiom.trade/'}
-        })
-        if (r.ok) {
-          const d = await r.json()
-          return {
-            lpBurned: d.lpBurned||0,
-            deployerAddress: d.deployerAddress||'',
-            protocol: d.protocol||'',
-            top10Holders: d.top10Holders||0,
-            tokenImage: d.tokenImage||null,
-            twitter: d.twitter||null,
-            telegram: d.telegram||null,
-            website: d.website||null,
-            dexPaid: d.dexPaid||false,
-          }
-        }
-      } catch {}
+    const r = await fetch('https://trench-production-cd7b.up.railway.app/api/axiom/pair-info/'+pairAddress)
+    if (!r.ok) return null
+    const d = await r.json()
+    if (d.error) return null
+    return {
+      lpBurned: d.lpBurned||0,
+      deployerAddress: d.deployerAddress||'',
+      protocol: d.protocol||'',
+      top10Holders: d.top10Holders||0,
+      tokenImage: d.tokenImage||null,
+      twitter: d.twitter||null,
+      telegram: d.telegram||null,
+      website: d.website||null,
+      dexPaid: d.dexPaid||false,
     }
-    return null
   } catch { return null }
 }
 
 async function fetchGeckoOHLCV(tokenAddress, timeframe='1', limit=300) {
   try {
-    // Find pool via GeckoTerminal
-    const r1 = await fetch('https://api.geckoterminal.com/api/v2/networks/solana/tokens/'+tokenAddress+'/pools?page=1')
-    const d1 = await r1.json()
-    const poolAddr = d1?.data?.[0]?.attributes?.address
-    if (!poolAddr) return []
-    // Get OHLCV
-    const tf = timeframe === '1' ? 'minute' : timeframe === '5' ? 'minute' : timeframe === '60' ? 'hour' : 'minute'
-    const agg = timeframe === '5' ? 5 : 1
-    const r2 = await fetch('https://api.geckoterminal.com/api/v2/networks/solana/pools/'+poolAddr+'/ohlcv/'+tf+'?limit='+limit+'&aggregate='+agg+'&currency=usd')
-    const d2 = await r2.json()
-    const list = d2?.data?.attributes?.ohlcv_list ?? []
-    // Convert to lightweight-charts format [timestamp, o, h, l, c, v]
-    return list.reverse().map(([t,o,h,l,cl,v]) => ({
-      time: t,
-      open: parseFloat(o) || 0,
-      high: parseFloat(h) || 0,
-      low: parseFloat(l) || 0,
-      close: parseFloat(cl) || 0,
-      value: parseFloat(v) || 0,
-    })).filter(c => c.open > 0)
+    const r = await fetch('https://trench-production-cd7b.up.railway.app/api/ohlcv/'+tokenAddress+'?tf='+timeframe+'&limit='+limit)
+    const d = await r.json()
+    return (d.candles || []).filter(c => c.open > 0)
   } catch(e) { return [] }
 }
 
