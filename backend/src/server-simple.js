@@ -248,3 +248,35 @@ app.get('/api/axiom/pair-info/:pairAddress', async (req, res) => {
     res.json({ error: 'Axiom API unavailable' })
   } catch(e) { res.json({ error: e.message }) }
 })
+
+// Proxy for Axiom top-traders
+app.get('/api/axiom/top-traders/:pairAddress', async (req, res) => {
+  try {
+    const { pairAddress } = req.params
+    for (const base of ['https://api.axiom.trade','https://api2.axiom.trade','https://api3.axiom.trade']) {
+      try {
+        const r = await fetch(base+'/top-traders/'+pairAddress, {
+          headers: { accept: 'application/json', origin: 'https://axiom.trade', referer: 'https://axiom.trade/' }
+        })
+        if (r.ok) { return res.json(await r.json()) }
+      } catch {}
+    }
+    res.json([])
+  } catch(e) { res.json([]) }
+})
+
+// Proxy for Axiom pair-stats (real buy/sell counts and volume)
+app.get('/api/axiom/pair-stats/:pairAddress', async (req, res) => {
+  try {
+    const { pairAddress } = req.params
+    for (const base of ['https://api.axiom.trade','https://api2.axiom.trade']) {
+      try {
+        const r = await fetch(base+'/pair-stats/'+pairAddress, {
+          headers: { accept: 'application/json', origin: 'https://axiom.trade', referer: 'https://axiom.trade/' }
+        })
+        if (r.ok) { return res.json(await r.json()) }
+      } catch {}
+    }
+    res.json([])
+  } catch(e) { res.json([]) }
+})
