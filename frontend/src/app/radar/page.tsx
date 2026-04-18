@@ -70,54 +70,54 @@ function pairToToken(p, stage) {
 }
 
 // ── Fetch real pairs ────────────────────────────────────
+async function dexSearch(q) {
+  try {
+    const r = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`)
+    const d = await r.json()
+    return d.pairs ?? []
+  } catch { return [] }
+}
+
 async function loadPairs() {
-  // Separate queries for each column to avoid dedup killing results
-  const [pumpfunRes, migratedRes] = await Promise.allSettled([
-    // pumpfun = bonding curve pre-migration
-    Promise.all(['pumpfun','pump sol','solana pump new'].map(q =>
-      fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>({pairs:[]}))
-    )),
-    // migrated = pumpswap + raydium + meteora
-    Promise.all(['pump fun migrated','pumpswap','solana meme'].map(q =>
-      fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>({pairs:[]}))
-    )),
+  // Fetch all in parallel — flat calls, no nesting
+  const [r1, r2, r3, r4, r5] = await Promise.all([
+    dexSearch('pumpfun'),
+    dexSearch('pump sol'),
+    dexSearch('solana pump new'),
+    dexSearch('pumpswap'),
+    dexSearch('solana meme'),
   ])
 
-  // Build new/stretch from pumpfun results
-  const seenNew = new Set()
-  const newP = [], stretchP = []
-  if (pumpfunRes.status === 'fulfilled') {
-    const allPumpfun = pumpfunRes.value.flatMap(d => d.pairs ?? [])
-      .filter(p => p.chainId === 'solana' && p.dexId === 'pumpfun' && (p.liquidity?.usd ?? 0) >= 100)
-      .sort((a,b) => (b.pairCreatedAt??0)-(a.pairCreatedAt??0))
-    for (const p of allPumpfun) {
-      if (seenNew.has(p.pairAddress)) continue
-      seenNew.add(p.pairAddress)
-      const mcap = p.marketCap ?? p.fdv ?? 0
+  const allPairs = [...r1,...r2,...r3,...r4,...r5]
+    .filter(p => p.chainId === 'solana' && (p.liquidity?.usd ?? 0) >= 100)
+
+  const seenPair = new Set()
+  const seenAddr = { new: new Set(), mig: new Set() }
+  const newP = [], stretchP = [], migratedP = []
+
+  // Sort newest first
+  allPairs.sort((a,b) => (b.pairCreatedAt??0)-(a.pairCreatedAt??0))
+
+  for (const p of allPairs) {
+    if (seenPair.has(p.pairAddress)) continue
+    seenPair.add(p.pairAddress)
+    const mcap = p.marketCap ?? p.fdv ?? 0
+    const dex = p.dexId
+
+    if (dex === 'pumpfun') {
+      // Pre-migration bonding curve
+      const addr = p.baseToken?.address
+      if (addr && seenAddr.new.has(addr)) continue
+      if (addr) seenAddr.new.add(addr)
       if (mcap >= 55000) stretchP.push(pairToToken(p,'stretch'))
       else newP.push(pairToToken(p,'new'))
-    }
-  }
-
-  // Build migrated from pumpswap/raydium/meteora
-  const seenMig = new Set()
-  const migratedP = []
-  if (migratedRes.status === 'fulfilled') {
-    const allMigrated = migratedRes.value.flatMap(d => d.pairs ?? [])
-      .filter(p => p.chainId === 'solana' && ['pumpswap','raydium','meteora','orca'].includes(p.dexId) && (p.liquidity?.usd ?? 0) >= 500)
-      .sort((a,b) => (b.pairCreatedAt??0)-(a.pairCreatedAt??0))
-    for (const p of allMigrated) {
-      if (seenMig.has(p.pairAddress)) continue
-      seenMig.add(p.pairAddress)
+    } else if (['pumpswap','raydium','meteora','orca'].includes(dex)) {
+      if ((p.liquidity?.usd ?? 0) < 500) continue
       migratedP.push(pairToToken(p,'migrated'))
     }
   }
 
-  return {
-    newP: newP.slice(0,20),
-    stretchP: stretchP.slice(0,20),
-    migratedP: migratedP.slice(0,20)
-  }
+  return { newP: newP.slice(0,20), stretchP: stretchP.slice(0,20), migratedP: migratedP.slice(0,20) }
 }
 
 // ── Fetch real holders via getTokenAccounts ─────────────
