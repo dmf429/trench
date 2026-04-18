@@ -7,6 +7,9 @@ import * as web3 from '@solana/web3.js'
 const HELIUS_KEY = '870dfde6-09ec-48bd-95b8-202303d15c5b'
 const HELIUS_RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
 const DEVNET_RPC = 'https://api.devnet.solana.com'
+const BULLX_WS = 'wss://stream.bullx.io/app/prowess-frail-sensitive?protocol=7&client=js&version=8.4.0-rc2&flash=false'
+const SOLANA_CHAIN_ID = '1399811149'
+const BULLX_CHANNEL = 'new-pairsv2-' + SOLANA_CHAIN_ID
 let cachedSolPrice = 150
 
 const fmt = (n) => { if(!n||n===0) return '$0'; if(n>=1e6) return `$${(n/1e6).toFixed(1)}M`; if(n>=1000) return `$${(n/1000).toFixed(1)}K`; return `$${n.toFixed(0)}` }
@@ -155,7 +158,10 @@ export default function RadarPage() {
   const searchTimeout=useRef(null)
   const conn=useRef(new web3.Connection(DEVNET_RPC,'confirmed'))
   const pumpWs=useRef(null)
+  const bullXWs=useRef(null)
+  const bullXPing=useRef(null)
   const [wsConnected,setWsConnected]=useState(false)
+  const [bullXConnected,setBullXConnected]=useState(false)
 
   useEffect(()=>{ fetchSolPrice().then(p=>setSolPrice(p)); const iv=setInterval(()=>fetchSolPrice().then(p=>setSolPrice(p)),30000); return()=>clearInterval(iv) },[])
 
@@ -213,6 +219,77 @@ export default function RadarPage() {
     connect()
     return () => {
       clearTimeout(reconnectTimer)
+      if (ws) ws.close()
+    }
+  },[])
+
+
+  // BullX Neo WebSocket - real-time new pairs with full data
+  useEffect(()=>{
+    let ws, reconnectTimer, pingTimer
+    const connect = () => {
+      try {
+        ws = new WebSocket(BULLX_WS)
+        bullXWs.current = ws
+        ws.onopen = () => {
+          setBullXConnected(true)
+          // Subscribe to new pairs channel
+          const sub = [{event:'pusher:subscribe',data:{auth:'',channel:BULLX_CHANNEL}},{event:'pusher:subscribe',data:{auth:'',channel:BULLX_CHANNEL+'-ms'}}]
+          sub.forEach(s => ws.send(JSON.stringify(s)))
+          // Ping every 30s to keep alive
+          pingTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({event:'pusher:ping',data:{}}))
+          }, 30000)
+        }
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg.event === BULLX_CHANNEL && msg.data) {
+              const tokens = JSON.parse(msg.data)
+              if (!Array.isArray(tokens)) return
+              for (const t of tokens) {
+                if (!t.a || !t.b) continue
+                const mcap = t.v || 0
+                const newToken = {
+                  id: t.a, symbol: t.b||'???', name: t.aa||t.b||'Unknown',
+                  address: t.a, pairAddress: t.a,
+                  color: COLORS[Math.abs((t.a?.charCodeAt(0)||0)+(t.a?.charCodeAt(1)||0))%COLORS.length],
+                  price: t.l||0, marketCap: mcap, liquidity: t.g||0,
+                  volume5m: t.d||0, volume1h: t.d||0,
+                  priceChange5m: t.m||0, priceChange1h: t.m||0,
+                  buys5m: t.e||0, sells5m: t.f||0,
+                  buys1h: t.e||0, sells1h: t.f||0,
+                  age: 0, bondingCurve: Math.min(99,Math.round((mcap/69000)*100)),
+                  holders: t.aj||0, stage: mcap>=55000?'stretch':'new',
+                  logoUri: t.imageUri||null, dexId: t.z||'pumpfun',
+                  supply: '1B',
+                  website: t.w?.website||null,
+                  twitter: t.w?.twitter||null,
+                  telegram: t.w?.telegram||null,
+                  globalFeesPaid: '0', pairCreatedAt: Date.now(),
+                  source: 'bullx'
+                }
+                if (mcap>=55000) {
+                  setStretch(prev => [newToken,...prev.filter(x=>x.address!==t.a)].slice(0,20))
+                } else {
+                  setNewPairs(prev => [newToken,...prev.filter(x=>x.address!==t.a)].slice(0,20))
+                }
+              }
+            }
+          } catch(e) {}
+        }
+        ws.onclose = () => {
+          setBullXConnected(false)
+          clearInterval(pingTimer)
+          reconnectTimer = setTimeout(connect, 3000)
+        }
+        ws.onerror = () => ws.close()
+      } catch {}
+    }
+    connect()
+    return () => {
+      clearTimeout(reconnectTimer)
+      clearInterval(pingTimer)
       if (ws) ws.close()
     }
   },[])
@@ -320,7 +397,16 @@ export default function RadarPage() {
     else setSearchResults([])
   },[searchQuery])
 
-  const selectToken=(token)=>{setSelected(token);setSideTab('buy');setBottomTab('trades');setShowSearch(false);setSearchQuery('')}
+  const selectToken=(token)=>{
+    setSelected(token);setSideTab('buy');setBottomTab('trades');setShowSearch(false);setSearchQuery('')
+    // Subscribe to real-time updates for this specific token via BullX
+    if(bullXWs.current?.readyState===WebSocket.OPEN) {
+      bullXWs.current.send(JSON.stringify({
+        event:'pusher:subscribe',
+        data:{auth:'',channel:'token_updates_'+token.address+'_'+SOLANA_CHAIN_ID}
+      }))
+    }
+  }
 
   const pos=positions.find(p=>p.token.id===selected?.id)
   const posValueUsd=pos?pos.tokensHeld*(selected?.price??0):0
@@ -431,9 +517,9 @@ export default function RadarPage() {
                 <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#3a3a5c'}}>Search by name, ticker, or paste CA...</span>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:'8px',flexShrink:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:'3px'}}>
-                <div style={{width:'5px',height:'5px',borderRadius:'50%',background:wsConnected?'#00FF88':'#FF3366',boxShadow:wsConnected?'0 0 4px #00FF8888':undefined}}/>
-                <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:wsConnected?'#00FF88':'#FF3366'}}>{wsConnected?'LIVE':'CONNECTING'}</span>
+              <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                <div style={{width:'5px',height:'5px',borderRadius:'50%',background:wsConnected||bullXConnected?'#00FF88':'#FF3366',boxShadow:wsConnected||bullXConnected?'0 0 4px #00FF8888':undefined}}/>
+                <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:wsConnected||bullXConnected?'#00FF88':'#FF3366'}}>{wsConnected&&bullXConnected?'LIVE x2':wsConnected||bullXConnected?'LIVE':'OFFLINE'}</span>
               </div>
               <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'8px',color:'#3a3a5c'}}>◎ {solPrice.toFixed(0)} · {newPairs.length+stretch.length+migrated.length} PAIRS</span>
             </div>
