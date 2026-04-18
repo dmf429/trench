@@ -154,8 +154,68 @@ export default function RadarPage() {
   const [pnlInSol,setPnlInSol]=useState(true)
   const searchTimeout=useRef(null)
   const conn=useRef(new web3.Connection(DEVNET_RPC,'confirmed'))
+  const pumpWs=useRef(null)
+  const [wsConnected,setWsConnected]=useState(false)
 
   useEffect(()=>{ fetchSolPrice().then(p=>setSolPrice(p)); const iv=setInterval(()=>fetchSolPrice().then(p=>setSolPrice(p)),30000); return()=>clearInterval(iv) },[])
+
+  // Pump.fun real-time WebSocket for new pairs
+  useEffect(()=>{
+    let ws, reconnectTimer
+    const connect = () => {
+      try {
+        ws = new WebSocket('wss://pumpportal.fun/api/data')
+        pumpWs.current = ws
+        ws.onopen = () => {
+          setWsConnected(true)
+          // Subscribe to new token creation events
+          ws.send(JSON.stringify({method:'subscribeNewToken'}))
+          // Subscribe to migration events
+          ws.send(JSON.stringify({method:'subscribeMigration'}))
+        }
+        ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data)
+            if (data.txType === 'create') {
+              // New token created on pump.fun
+              const newToken = {
+                id: data.signature || data.mint,
+                symbol: data.symbol || '???',
+                name: data.name || 'New Token',
+                address: data.mint || '',
+                pairAddress: data.mint || '',
+                color: COLORS[Math.abs((data.mint?.charCodeAt(0)||0)+(data.mint?.charCodeAt(1)||0))%COLORS.length],
+                price: 0, marketCap: 0, liquidity: 0,
+                volume5m: 0, volume1h: 0, priceChange5m: 0, priceChange1h: 0,
+                buys5m: 0, sells5m: 0, buys1h: 0, sells1h: 0,
+                age: 0, bondingCurve: 0, holders: 0,
+                stage: 'new', logoUri: data.image || null, dexId: 'pumpfun',
+                supply: '1B', website: data.website || null,
+                twitter: data.twitter || null, telegram: data.telegram || null,
+                globalFeesPaid: '0', pairCreatedAt: Date.now(),
+              }
+              setNewPairs(prev => [newToken, ...prev].slice(0,20))
+            } else if (data.txType === 'migrate') {
+              // Token graduated and migrated
+              setNewPairs(prev => prev.filter(t => t.address !== data.mint))
+              setStretch(prev => prev.filter(t => t.address !== data.mint))
+            }
+          } catch {}
+        }
+        ws.onclose = () => {
+          setWsConnected(false)
+          // Reconnect after 3s
+          reconnectTimer = setTimeout(connect, 3000)
+        }
+        ws.onerror = () => ws.close()
+      } catch {}
+    }
+    connect()
+    return () => {
+      clearTimeout(reconnectTimer)
+      if (ws) ws.close()
+    }
+  },[])
 
   const refreshPairs=useCallback(async()=>{ const {newP,stretchP,migratedP}=await loadPairs(); setNewPairs(newP); setStretch(stretchP); setMigrated(migratedP); setLoading(false) },[])
   useEffect(()=>{ refreshPairs(); const iv=setInterval(refreshPairs,15000); return()=>clearInterval(iv) },[refreshPairs])
@@ -370,7 +430,13 @@ export default function RadarPage() {
                 <span style={{color:'#3a3a5c',fontSize:'12px'}}>⌕</span>
                 <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#3a3a5c'}}>Search by name, ticker, or paste CA...</span>
               </div>
-              <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'8px',color:'#3a3a5c',flexShrink:0}}>◎ {solPrice.toFixed(0)} · {loading?'SCANNING...':newPairs.length+stretch.length+migrated.length+' PAIRS'}</span>
+              <div style={{display:'flex',alignItems:'center',gap:'8px',flexShrink:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:'3px'}}>
+                <div style={{width:'5px',height:'5px',borderRadius:'50%',background:wsConnected?'#00FF88':'#FF3366',boxShadow:wsConnected?'0 0 4px #00FF8888':undefined}}/>
+                <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:wsConnected?'#00FF88':'#FF3366'}}>{wsConnected?'LIVE':'CONNECTING'}</span>
+              </div>
+              <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'8px',color:'#3a3a5c'}}>◎ {solPrice.toFixed(0)} · {newPairs.length+stretch.length+migrated.length} PAIRS</span>
+            </div>
             </div>
             <div style={{flex:1,display:'grid',gridTemplateColumns:'1fr 1fr 1fr',overflow:'hidden'}}>
               {[{label:'NEW PAIRS',color:'#00FF88',tokens:newPairs,desc:'Pump.fun bonding curve'},{label:'FINAL STRETCH',color:'#FFD700',tokens:stretch,desc:'Near $69K graduation'},{label:'MIGRATED',color:'#0088ff',tokens:migrated,desc:'PumpSwap/Raydium'}].map((col,ci)=>(
