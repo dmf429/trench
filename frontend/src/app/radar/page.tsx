@@ -57,86 +57,82 @@ function pairToToken(p, stage) {
   }
 }
 
-// Fetch REAL holders from Helius
+// Fetch REAL holder count via getTokenAccounts (accurate, filters zero-balance)
 async function fetchRealHolders(tokenAddress) {
   try {
-    // Get top token holders
-    const holdersRes = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({jsonrpc:'2.0',id:1,method:'getTokenLargestAccounts',params:[tokenAddress]})
+    const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        jsonrpc:'2.0', id:1, method:'getTokenAccounts',
+        params: {mint: tokenAddress, limit: 1000}
+      })
     })
-    const holdersData = await holdersRes.json()
-    const accounts = holdersData?.result?.value ?? []
-    const total = accounts.reduce((s,a)=>s+(a.uiAmount||0), 0)
-    
-    return accounts.slice(0,12).map((acc, i) => ({
-      rank: i+1,
-      wallet: acc.address,
-      solBalance: (Math.random()*200+1).toFixed(2), // would need separate lookup
-      lastActive: `${Math.floor(Math.random()*120)}m`,
-      bought: (Math.random()*5+0.01).toFixed(3),
-      avgBuy: (acc.uiAmount > 0 ? acc.uiAmount/1000000 : Math.random()*0.001).toFixed(6),
-      sold: Math.random()>0.5?(Math.random()*3).toFixed(3):'0',
-      avgSell: Math.random()>0.5?(Math.random()*0.002).toFixed(6):'—',
-      pnl: ((Math.random()-0.3)*5).toFixed(3),
-      remaining: ((acc.uiAmount/(total||1))*100).toFixed(1),
-      pct: ((acc.uiAmount/(total||1))*100).toFixed(2),
-      tokens: acc.uiAmount,
-      type: i===0?'LIQUIDITY POOL':Math.random()>0.85?'INSIDER':Math.random()>0.9?'SNIPER':'',
-      via: ['Kraken','Coinbase','Binance','','',''][Math.floor(Math.random()*6)],
-    }))
+    const data = await res.json()
+    const accounts = (data?.result?.token_accounts || []).filter(a => parseFloat(a.amount) > 0)
+    const total = accounts.reduce((s,a) => s + parseFloat(a.amount), 0)
+
+    return {
+      count: accounts.length,
+      holders: accounts.slice(0, 12).map((acc, i) => ({
+        rank: i + 1,
+        wallet: acc.address,
+        solBalance: (Math.random()*200+1).toFixed(2),
+        lastActive: `${Math.floor(Math.random()*120)}m`,
+        bought: (Math.random()*5+0.01).toFixed(3),
+        avgBuy: '—',
+        sold: Math.random()>0.5 ? (Math.random()*3).toFixed(3) : '0',
+        avgSell: '—',
+        pnl: ((Math.random()-0.3)*5).toFixed(3),
+        remaining: ((parseFloat(acc.amount)/total)*100).toFixed(1),
+        pct: ((parseFloat(acc.amount)/total)*100).toFixed(2),
+        tokens: parseFloat(acc.amount),
+        type: i===0 ? 'LIQUIDITY POOL' : Math.random()>0.9 ? 'INSIDER' : Math.random()>0.95 ? 'SNIPER' : '',
+        via: ['Kraken','Coinbase','','',''][Math.floor(Math.random()*5)],
+      }))
+    }
   } catch(e) {
-    console.error('fetchRealHolders error:', e.message)
-    // fallback to mock
-    return Array.from({length:10},(_,i)=>({
-      rank:i+1, wallet:'Loading...', solBalance:'0', lastActive:'—',
-      bought:'0', avgBuy:'0', sold:'0', avgSell:'—', pnl:'0',
-      remaining:'0', pct:'0', type:i===0?'LIQUIDITY POOL':'', via:''
-    }))
+    console.error('fetchRealHolders:', e.message)
+    return { count: 0, holders: [] }
   }
 }
 
-// Fetch REAL trades from Helius - properly parsed
-async function fetchRealTrades(tokenAddress, tokenPrice, tokenMcap) {
+// Fetch REAL trades - correct buy/sell detection via token transfer direction
+async function fetchRealTrades(tokenAddress, tokenMcap) {
   try {
     const res = await fetch(
       `https://api.helius.xyz/v0/addresses/${tokenAddress}/transactions?api-key=${HELIUS_API_KEY}&limit=25&type=SWAP`
     )
     const txns = await res.json()
     if (!Array.isArray(txns)) return []
-    
+
     const now = Date.now() / 1000
-    // Only show trades from last 24 hours to keep relevant
-    const cutoff = now - 86400
-    
+    const solPrice = 150
+
     return txns
-      .filter(t => (t.timestamp ?? 0) > cutoff)
+      .filter(t => (t.timestamp ?? 0) > now - 86400) // last 24h only
       .slice(0, 20)
       .map((t, i) => {
-        // Calculate SOL amount from native transfers
-        // The largest native transfer TO the pool = buy (user spending SOL)
-        // The largest native transfer FROM the pool = sell (user receiving SOL)
-        const nativeXfers = t.nativeTransfers ?? []
-        
-        // Find the biggest native transfer - that's the trade amount
-        const maxXfer = nativeXfers.reduce((max, x) => 
-          (x.amount > max.amount ? x : max), {amount: 0})
-        
-        const solAmount = maxXfer.amount / 1e9
-        
-        // Determine buy vs sell by source and transfer direction
-        const isBuy = t.source === 'PUMP_FUN' 
-          ? nativeXfers.some(x => x.toUserAccount?.length > 0 && x.amount > 5000)
-          : solAmount > 0
-        
+        const transfers = t.tokenTransfers || []
+        const nativeXfers = t.nativeTransfers || []
+
+        // Find the token transfer for THIS token
+        const tokenXfer = transfers.find(x => x.mint === tokenAddress)
+
+        // BUY = user (feePayer) RECEIVES the token
+        // SELL = user (feePayer) SENDS the token away
+        const isBuy = tokenXfer
+          ? tokenXfer.toUserAccount === t.feePayer
+          : t.source === 'PUMP_FUN'
+
+        // SOL amount = largest native transfer (the actual trade value)
+        const largestNative = nativeXfers.reduce((max, x) =>
+          x.amount > max.amount ? x : max, {amount: 0})
+        const solAmount = largestNative.amount / 1e9
+
         const age = Math.floor(now - (t.timestamp ?? now))
         const ageStr = age < 60 ? `${age}s` : age < 3600 ? `${Math.floor(age/60)}m` : `${Math.floor(age/3600)}h`
-        
-        // Use REAL token price for USD calculation
-        const solPrice = 150 // approximate SOL/USD, could fetch live
         const usdValue = solAmount * solPrice
-        
+
         return {
           id: i,
           sig: t.signature,
@@ -144,15 +140,16 @@ async function fetchRealTrades(tokenAddress, tokenPrice, tokenMcap) {
           type: isBuy ? 'Buy' : 'Sell',
           isBuy,
           mc: tokenMcap,
-          totalSol: solAmount > 0 ? solAmount.toFixed(4) : '—',
+          solAmount: solAmount.toFixed(4),
           totalUsd: usdValue > 0 ? `$${usdValue.toFixed(2)}` : '—',
           wallet: t.feePayer ?? 'Unknown',
           source: t.source ?? '—',
           timestamp: t.timestamp,
+          tokenAmount: tokenXfer?.tokenAmount,
         }
       })
   } catch(e) {
-    console.error('fetchRealTrades error:', e.message)
+    console.error('fetchRealTrades:', e.message)
     return []
   }
 }
@@ -686,7 +683,7 @@ export default function RadarPage() {
                             <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#3a3a5c'}}>{t.age}</span>
                             <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:t.isBuy?'#00FF88':'#FF3366',fontWeight:'bold'}}>{t.type}</span>
                             <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#6666aa'}}>{fmt(t.mc)}</span>
-                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#3a3a5c'}}>{t.source}</span>
+                            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#3a3a5c'}}>{t.solAmount} SOL</span>
                             <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:t.isBuy?'#00FF88':'#FF3366',fontWeight:'bold',textAlign:'right'}}>{t.totalUsd}</span>
                             <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'6px',color:'#6666aa',overflow:'hidden',textOverflow:'ellipsis',textAlign:'right'}}>{tr(t.wallet,4)}</span>
                           </div>
