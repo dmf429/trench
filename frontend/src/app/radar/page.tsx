@@ -46,13 +46,15 @@ async function dexSearch(q) {
 
 async function loadPairs() {
   const [r1,r2,r3,r4,r5] = await Promise.all([dexSearch('pumpfun'),dexSearch('pump sol'),dexSearch('solana pump new'),dexSearch('pumpswap'),dexSearch('solana meme')])
-  const all = [...r1,...r2,...r3,...r4,...r5].filter(p=>p.chainId==='solana'&&(p.liquidity?.usd??0)>=100)
+  const all = [...r1,...r2,...r3,...r4,...r5].filter(p=>p.chainId==='solana')
   all.sort((a,b)=>(b.pairCreatedAt??0)-(a.pairCreatedAt??0))
   const seenP=new Set(), seenA=new Set(), newP=[], stretchP=[], migratedP=[]
   for (const p of all) {
     if(seenP.has(p.pairAddress)) continue; seenP.add(p.pairAddress)
     const mcap=p.marketCap??p.fdv??0, dex=p.dexId
     if(dex==='pumpfun') {
+      // pumpfun bonding curve - filter by having any activity
+      if(mcap<500 && (p.liquidity?.usd??0)<50) continue
       const addr=p.baseToken?.address; if(addr&&seenA.has(addr)) continue; if(addr) seenA.add(addr)
       if(mcap>=55000) stretchP.push(pairToToken(p,'stretch')); else newP.push(pairToToken(p,'new'))
     } else if(['pumpswap','raydium','meteora','orca'].includes(dex)) {
