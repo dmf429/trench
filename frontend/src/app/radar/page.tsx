@@ -132,6 +132,31 @@ async function fetchTopTraders(tokenAddress) {
   } catch { return [] }
 }
 
+async function fetchGeckoOHLCV(tokenAddress, timeframe='1', limit=300) {
+  try {
+    // Find pool via GeckoTerminal
+    const r1 = await fetch('https://api.geckoterminal.com/api/v2/networks/solana/tokens/'+tokenAddress+'/pools?page=1')
+    const d1 = await r1.json()
+    const poolAddr = d1?.data?.[0]?.attributes?.address
+    if (!poolAddr) return []
+    // Get OHLCV
+    const tf = timeframe === '1' ? 'minute' : timeframe === '5' ? 'minute' : timeframe === '60' ? 'hour' : 'minute'
+    const agg = timeframe === '5' ? 5 : 1
+    const r2 = await fetch('https://api.geckoterminal.com/api/v2/networks/solana/pools/'+poolAddr+'/ohlcv/'+tf+'?limit='+limit+'&aggregate='+agg+'&currency=usd')
+    const d2 = await r2.json()
+    const list = d2?.data?.attributes?.ohlcv_list ?? []
+    // Convert to lightweight-charts format [timestamp, o, h, l, c, v]
+    return list.reverse().map(([t,o,h,l,cl,v]) => ({
+      time: t,
+      open: parseFloat(o) || 0,
+      high: parseFloat(h) || 0,
+      low: parseFloat(l) || 0,
+      close: parseFloat(cl) || 0,
+      value: parseFloat(v) || 0,
+    })).filter(c => c.open > 0)
+  } catch(e) { return [] }
+}
+
 export default function RadarPage() {
   const [newPairs,setNewPairs]=useState([])
   const [stretch,setStretch]=useState([])
@@ -162,6 +187,11 @@ export default function RadarPage() {
   const bullXPing=useRef(null)
   const [wsConnected,setWsConnected]=useState(false)
   const [bullXConnected,setBullXConnected]=useState(false)
+  const [chartTimeframe,setChartTimeframe]=useState('1') // minutes
+  const chartRef=useRef(null)
+  const chartInstanceRef=useRef(null)
+  const candleSeriesRef=useRef(null)
+  const chartInitialized=useRef(false)
 
   useEffect(()=>{ fetchSolPrice().then(p=>setSolPrice(p)); const iv=setInterval(()=>fetchSolPrice().then(p=>setSolPrice(p)),30000); return()=>clearInterval(iv) },[])
 
@@ -397,6 +427,95 @@ export default function RadarPage() {
     else setSearchResults([])
   },[searchQuery])
 
+  // Initialize lightweight chart when token selected
+  useEffect(() => {
+    if (!selected || !chartRef.current) return
+    chartInitialized.current = false
+    
+    const init = async () => {
+      // Dynamically load lightweight-charts
+      if (!window.LightweightCharts) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script')
+          s.src = 'https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js'
+          s.onload = resolve; s.onerror = reject
+          document.head.appendChild(s)
+        })
+      }
+      
+      if (!chartRef.current) return
+      
+      // Destroy previous chart
+      if (chartInstanceRef.current) {
+        try { chartInstanceRef.current.remove() } catch {}
+        chartInstanceRef.current = null
+        candleSeriesRef.current = null
+      }
+      
+      // Create chart
+      const chart = window.LightweightCharts.createChart(chartRef.current, {
+        layout: { background: { color: '#050508' }, textColor: '#6666aa' },
+        grid: { vertLines: { color: '#1a1a2e' }, horzLines: { color: '#1a1a2e' } },
+        crosshair: { mode: 1 },
+        rightPriceScale: { borderColor: '#1a1a2e', textColor: '#6666aa' },
+        timeScale: { borderColor: '#1a1a2e', timeVisible: true, secondsVisible: true },
+        width: chartRef.current.clientWidth,
+        height: chartRef.current.clientHeight,
+      })
+      
+      chartInstanceRef.current = chart
+      
+      // Add candlestick series
+      const cs = chart.addCandlestickSeries({
+        upColor: '#00FF88', downColor: '#FF3366',
+        borderUpColor: '#00FF88', borderDownColor: '#FF3366',
+        wickUpColor: '#00FF88', wickDownColor: '#FF3366',
+      })
+      candleSeriesRef.current = cs
+      chartInitialized.current = true
+      
+      // Fetch and render OHLCV data
+      const candles = await fetchGeckoOHLCV(selected.address, chartTimeframe)
+      if (candles.length > 0 && candleSeriesRef.current) {
+        candleSeriesRef.current.setData(candles)
+        chart.timeScale().fitContent()
+      }
+      
+      // Resize observer
+      const ro = new ResizeObserver(() => {
+        if (chartRef.current && chartInstanceRef.current) {
+          chartInstanceRef.current.applyOptions({
+            width: chartRef.current.clientWidth,
+            height: chartRef.current.clientHeight,
+          })
+        }
+      })
+      ro.observe(chartRef.current)
+      return () => ro.disconnect()
+    }
+    
+    init()
+    
+    // Poll for new candles every 3s
+    const iv = setInterval(async () => {
+      if (!chartInitialized.current || !candleSeriesRef.current) return
+      const candles = await fetchGeckoOHLCV(selected.address, chartTimeframe, 5)
+      if (candles.length > 0 && candleSeriesRef.current) {
+        try { candleSeriesRef.current.update(candles[candles.length-1]) } catch {}
+      }
+    }, 3000)
+    
+    return () => {
+      clearInterval(iv)
+      if (chartInstanceRef.current) {
+        try { chartInstanceRef.current.remove() } catch {}
+        chartInstanceRef.current = null
+        candleSeriesRef.current = null
+        chartInitialized.current = false
+      }
+    }
+  }, [selected?.id, chartTimeframe])
+
   const selectToken=(token)=>{
     setSelected(token);setSideTab('buy');setBottomTab('trades');setShowSearch(false);setSearchQuery('')
     // Subscribe to real-time updates for this specific token via BullX
@@ -571,9 +690,16 @@ export default function RadarPage() {
             </div>
             <div style={{flex:1,display:'flex',overflow:'hidden'}}>
               <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-                <div style={{flex:1,position:'relative',background:'#000',overflow:'hidden'}}>
-                  <iframe key={selected.pairAddress} src={`https://dexscreener.com/solana/${selected.pairAddress}?embed=1&theme=dark&trades=0&info=0`} style={{width:'100%',height:'calc(100% + 52px)',border:'none'}} title="chart"/>
-                  <div style={{position:'absolute',bottom:0,left:0,right:0,height:'52px',background:'#050508',zIndex:5,borderTop:'1px solid #1a1a2e'}}/>
+                <div style={{flex:1,position:'relative',background:'#050508',overflow:'hidden',display:'flex',flexDirection:'column'}}>
+                  {/* Timeframe selector */}
+                  <div style={{display:'flex',gap:'2px',padding:'4px 8px',background:'#070710',borderBottom:'1px solid #1a1a2e',alignItems:'center',flexShrink:0}}>
+                    {[['1','1m'],['5','5m'],['15','15m'],['60','1h']].map(([tf,label])=>(
+                      <button key={tf} onClick={()=>setChartTimeframe(tf)} style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'8px',padding:'3px 8px',background:chartTimeframe===tf?'#1a1a2e':'transparent',border:chartTimeframe===tf?'1px solid #3a3a5c':'1px solid transparent',color:chartTimeframe===tf?'#e0e0f0':'#3a3a5c',cursor:'pointer'}}>{label}</button>
+                    ))}
+                    <div style={{marginLeft:'auto',fontFamily:"'Share Tech Mono',monospace",fontSize:'7px',color:'#3a3a5c'}}>GeckoTerminal · Real-time</div>
+                  </div>
+                  {/* Lightweight chart */}
+                  <div ref={chartRef} style={{flex:1,width:'100%'}}/>
                 </div>
                 <div style={{height:'210px',borderTop:'1px solid #1a1a2e',flexShrink:0,display:'flex',flexDirection:'column'}}>
                   <div style={{display:'flex',borderBottom:'1px solid #1a1a2e',background:'#070710',flexShrink:0}}>
