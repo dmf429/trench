@@ -181,6 +181,9 @@ export default function RadarPage() {
   const [chartSource,setChartSource]=useState('loading')
   const [liveConnections,setLiveConnections]=useState(0)
   const [panelHeight,setPanelHeight]=useState(240)
+  const [filterPreset,setFilterPreset]=useState(null) // null=all, {min,max,minBond}
+  const [flashMap,setFlashMap]=useState({}) // tokenId -> 'up'|'down' for price flash
+  const [showBottomBar,setShowBottomBar]=useState(true)
   const chartRef=useRef(null)
   const chartInstanceRef=useRef(null)
   const candleSeriesRef=useRef(null)
@@ -267,6 +270,11 @@ export default function RadarPage() {
                 else if(v2s[viewName]==='stretch') setStretch(upd)
                 else setMigrated(upd)
                 setSelected(s=>s?.id===t.id?{...s,...t}:s)
+                // Flash animation on price change
+                if (t.priceChange5m !== 0) {
+                  setFlashMap(f=>({...f,[t.id]:t.priceChange5m>0?'up':'down'}))
+                  setTimeout(()=>setFlashMap(f=>{const n={...f};delete n[t.id];return n}), 600)
+                }
               })
             } else if(msg.type==='remove-token') {
               const addr=msg.payload?.token?.token?.address; if(!addr) return
@@ -492,15 +500,17 @@ export default function RadarPage() {
   // Token Card - Axiom style with real data fields
   const TokenCard=({token})=>{
     const isSel=selected?.id===token.id
+    const flash=flashMap[token.id] // 'up' | 'down' | undefined
     const netChange=token.priceChange1h??token.priceChange5m??0
     const mcColor=getMcColor(token.marketCap)
     const bondColor=getBondColor(token.bondingCurve)
     const buys=token.buys1h||token.buys5m||0,sells=token.sells1h||token.sells5m||0
     const total=buys+sells||1,greenPct=Math.round((buys/total)*100)
     return (
-      <div onClick={()=>selectToken(token)} style={{background:isSel?'rgba(34,197,94,0.06)':'transparent',borderBottom:'1px solid #1a1a2e',padding:'12px 14px',cursor:'pointer',transition:'background 0.1s',borderLeft:isSel?'3px solid #22c55e':'3px solid transparent'}}
+      <div onClick={()=>selectToken(token)}
         onMouseEnter={e=>e.currentTarget.style.background=isSel?'rgba(34,197,94,0.06)':'rgba(255,255,255,0.02)'}
-        onMouseLeave={e=>e.currentTarget.style.background=isSel?'rgba(34,197,94,0.06)':'transparent'}>
+        onMouseLeave={e=>e.currentTarget.style.background=isSel?'rgba(34,197,94,0.06)':'transparent'}
+        style={{...undefined, background:flash==='up'?'rgba(34,197,94,0.1)':flash==='down'?'rgba(239,68,68,0.1)':isSel?'rgba(34,197,94,0.06)':'transparent',borderBottom:'1px solid #1a1a2e',padding:'12px 14px',cursor:'pointer',transition:'background 0.15s',borderLeft:isSel?'3px solid #22c55e':'3px solid transparent'}}>
         <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}}>
           {token.logoUri?(<img src={token.logoUri} alt="" style={{width:'38px',height:'38px',borderRadius:'50%',objectFit:'cover',flexShrink:0,border:`2px solid ${token.color}33`}} onError={e=>e.target.style.display='none'}/>):(<div style={{width:'38px',height:'38px',borderRadius:'50%',background:token.color,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Bebas Neue',sans-serif",fontSize:'16px',color:'#fff',flexShrink:0,border:`2px solid ${token.color}33`}}>{token.symbol[0]}</div>)}
           <div style={{flex:1,minWidth:0}}>
@@ -600,6 +610,17 @@ export default function RadarPage() {
                 <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'12px',color:'#777a8c'}}>Search by name, ticker, or paste contract address...</span>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:'8px',flexShrink:0}}>
+                {/* Filter presets P1/P2/P3 like Axiom */}
+                <div style={{display:'flex',gap:'3px'}}>
+                  {[
+                    {id:'p1',label:'P1',min:0,max:50000},
+                    {id:'p2',label:'P2',min:50000,max:100000},
+                    {id:'p3',label:'P3',min:100000},
+                  ].map(p=>(
+                    <button key={p.id} onClick={()=>setFilterPreset(fp=>fp?.id===p.id?null:p)} style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',padding:'3px 8px',background:filterPreset?.id===p.id?'rgba(34,197,94,0.15)':'#0d0d14',border:`1px solid ${filterPreset?.id===p.id?'rgba(34,197,94,0.4)':'#1a1a2e'}`,color:filterPreset?.id===p.id?'#22c55e':'#777a8c',cursor:'pointer',borderRadius:'4px'}}>{p.label}</button>
+                  ))}
+                </div>
+                <div style={{width:'1px',height:'16px',background:'#1a1a2e'}}/>
                 <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
                   <div style={{width:'7px',height:'7px',borderRadius:'50%',background:liveConnections>0?'#22c55e':'#ef4444',boxShadow:liveConnections>0?'0 0 6px #22c55e88':undefined}}/>
                   <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'11px',color:liveConnections>0?'#22c55e':'#ef4444'}}>{liveConnections>0?`LIVE x${liveConnections}`:'OFFLINE'}</span>
@@ -610,9 +631,9 @@ export default function RadarPage() {
             </div>
             <div style={{flex:1,display:'grid',gridTemplateColumns:'1fr 1fr 1fr',overflow:'hidden'}}>
               {[
-                {label:'NEW PAIRS',color:'#22c55e',tokens:newPairs,desc:'Pump.fun bonding curve · Pre-migration'},
+                {label:'NEW PAIRS',color:'#22c55e',tokens:filterPreset?newPairs.filter(t=>(!filterPreset.min||t.marketCap>=filterPreset.min)&&(!filterPreset.max||t.marketCap<=filterPreset.max)):newPairs,desc:'Pump.fun bonding curve · Pre-migration'},
                 {label:'FINAL STRETCH',color:'#eab308',tokens:stretch,desc:'Near $69K graduation'},
-                {label:'MIGRATED',color:'#38bdf8',tokens:migrated,desc:'PumpSwap/Raydium · Graduated'},
+                {label:'MIGRATED',color:'#38bdf8',tokens:filterPreset?migrated.filter(t=>(!filterPreset.min||t.marketCap>=filterPreset.min)&&(!filterPreset.max||t.marketCap<=filterPreset.max)):migrated,desc:'PumpSwap/Raydium · Graduated'},
               ].map((col,ci)=>(
                 <div key={col.label} style={{display:'flex',flexDirection:'column',overflow:'hidden',borderRight:ci<2?'1px solid #1a1a2e':'none'}}>
                   <div style={{padding:'10px 14px',borderBottom:'1px solid #1a1a2e',background:'#050508',flexShrink:0}}>
@@ -624,7 +645,19 @@ export default function RadarPage() {
                     <div style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#777a8c'}}>{col.desc}</div>
                   </div>
                   <div style={{flex:1,overflowY:'auto'}}>
-                    {loading&&col.tokens.length===0?<div style={{padding:'48px',textAlign:'center',fontFamily:"'Share Tech Mono',monospace",fontSize:'11px',color:'#777a8c',letterSpacing:'2px'}}>SCANNING...</div>
+                    {loading&&col.tokens.length===0?<div style={{padding:'8px'}}>{Array.from({length:6}).map((_,i)=>(
+                        <div key={i} style={{padding:'12px 14px',borderBottom:'1px solid #1a1a2e',display:'flex',alignItems:'center',gap:'10px'}}>
+                          <div style={{width:'38px',height:'38px',borderRadius:'50%',background:'linear-gradient(90deg,#1a1a2e 25%,#252636 50%,#1a1a2e 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.5s infinite',flexShrink:0}}/>
+                          <div style={{flex:1}}>
+                            <div style={{height:'13px',background:'linear-gradient(90deg,#1a1a2e 25%,#252636 50%,#1a1a2e 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.5s infinite',marginBottom:'6px',width:'60%',borderRadius:'3px'}}/>
+                            <div style={{height:'10px',background:'linear-gradient(90deg,#1a1a2e 25%,#252636 50%,#1a1a2e 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.5s infinite',width:'40%',borderRadius:'3px'}}/>
+                          </div>
+                          <div style={{width:'60px',textAlign:'right'}}>
+                            <div style={{height:'14px',background:'linear-gradient(90deg,#1a1a2e 25%,#252636 50%,#1a1a2e 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.5s infinite',marginBottom:'4px',borderRadius:'3px'}}/>
+                            <div style={{height:'10px',background:'linear-gradient(90deg,#1a1a2e 25%,#252636 50%,#1a1a2e 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.5s infinite',borderRadius:'3px'}}/>
+                          </div>
+                        </div>
+                      ))}</div>
                     :col.tokens.length===0?<div style={{padding:'48px',textAlign:'center',fontFamily:"'Share Tech Mono',monospace",fontSize:'11px',color:'#1a1a2e'}}>NO PAIRS</div>
                     :col.tokens.map(t=><TokenCard key={t.id} token={t}/>)}
                   </div>
@@ -895,7 +928,26 @@ export default function RadarPage() {
           </div>
         )}
       </div>
-      <style>{`@keyframes rp{0%,100%{opacity:1}50%{opacity:0.3}} ::-webkit-scrollbar{width:4px;height:4px} ::-webkit-scrollbar-track{background:#050508} ::-webkit-scrollbar-thumb{background:#1a1a2e;border-radius:2px} ::-webkit-scrollbar-thumb:hover{background:#3a3a5c}`}</style>
+      {/* Bottom Status Bar - Axiom pulse clone pattern */}
+      {showBottomBar&&(
+        <div style={{height:'28px',borderTop:'1px solid #1a1a2e',background:'#070710',display:'flex',alignItems:'center',padding:'0 16px',gap:'16px',flexShrink:0,overflowX:'auto'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'6px',flexShrink:0}}>
+            <div style={{width:'6px',height:'6px',borderRadius:'50%',background:liveConnections>0?'#22c55e':'#ef4444',boxShadow:liveConnections>0?'0 0 4px #22c55e':undefined}}/>
+            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#777a8c'}}>{liveConnections>0?'LIVE · pump.fun + Mobula + BullX':'OFFLINE'}</span>
+          </div>
+          <div style={{width:'1px',height:'14px',background:'#1a1a2e',flexShrink:0}}/>
+          <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#777a8c',flexShrink:0}}>SOL <span style={{color:'#fcfcfc',fontWeight:'bold'}}>${solPrice.toFixed(2)}</span></span>
+          <div style={{width:'1px',height:'14px',background:'#1a1a2e',flexShrink:0}}/>
+          <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#777a8c',flexShrink:0}}>NEW <span style={{color:'#22c55e',fontWeight:'bold'}}>{newPairs.length}</span></span>
+          <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#777a8c',flexShrink:0}}>STRETCH <span style={{color:'#eab308',fontWeight:'bold'}}>{stretch.length}</span></span>
+          <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#777a8c',flexShrink:0}}>MIGRATED <span style={{color:'#38bdf8',fontWeight:'bold'}}>{migrated.length}</span></span>
+          <div style={{marginLeft:'auto',display:'flex',gap:'12px',flexShrink:0}}>
+            {selected&&<span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#777a8c'}}>VIEWING <span style={{color:'#fcfcfc'}}>${selected.symbol}</span> · {fmt(selected.marketCap)}</span>}
+            <span style={{fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',color:'#3a3a5c',cursor:'pointer'}} onClick={()=>setShowBottomBar(false)}>✕</span>
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes rp{0%,100%{opacity:1}50%{opacity:0.3}} @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}} ::-webkit-scrollbar{width:4px;height:4px} ::-webkit-scrollbar-track{background:#050508} ::-webkit-scrollbar-thumb{background:#1a1a2e;border-radius:2px} ::-webkit-scrollbar-thumb:hover{background:#3a3a5c}`}</style>
     </div>
   )
 }
