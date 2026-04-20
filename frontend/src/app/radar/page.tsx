@@ -7,6 +7,7 @@ import * as web3 from '@solana/web3.js'
 // ── Constants ───────────────────────────────────────────────────────────
 const BACKEND = 'https://trench-production-cd7b.up.railway.app'
 const HELIUS_KEY = '870dfde6-09ec-48bd-95b8-202303d15c5b'
+const MOBULA_KEY = '0c618a08-8d56-430f-a814-80ab2142fe7f'
 const HELIUS_RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
 const DEVNET_RPC = 'https://api.devnet.solana.com'
 const MOBULA_WS = 'wss://api.mobula.io'
@@ -259,6 +260,8 @@ export default function RadarPage() {
   const chartInstance = useRef(null)
   const candleSeries = useRef(null)
   const searchTimeout = useRef(null)
+  const mobulaTradeWs = useRef(null)
+  const mobulaOhlcvWs = useRef(null)
   const conn = useRef(new web3.Connection(DEVNET_RPC, 'confirmed'))
 
   // SOL price
@@ -351,7 +354,7 @@ export default function RadarPage() {
         ws = new WebSocket(MOBULA_WS)
         ws.onopen = () => {
           setLiveConns(n => n+1)
-          ws.send(JSON.stringify({type:'pulse-v2', payload:{model:'default',assetMode:true,chainId:['solana:solana'],poolTypes:['pumpfun'],compressed:false}}))
+          ws.send(JSON.stringify({type:'pulse-v2',authorization:'0c618a08-8d56-430f-a814-80ab2142fe7f',payload:{model:'default',assetMode:true,chainId:['solana:solana'],poolTypes:['pumpfun'],compressed:false}}))
           ping = setInterval(() => { if (ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({event:'ping'})) }, 15000)
         }
         ws.onmessage = (e) => {
@@ -538,6 +541,58 @@ export default function RadarPage() {
       }, 200)
     } else { setSearchResults([]) }
   }, [searchQuery])
+
+  // ── Mobula fast-trade + ohlcv live streams ─────────────────────────
+  useEffect(() => {
+    if (!selected?.address) return
+    let dead = false
+    const MKEY = '0c618a08-8d56-430f-a814-80ab2142fe7f'
+
+    // Fast-trade stream
+    const tw = new WebSocket('wss://api.mobula.io')
+    mobulaTradeWs.current = tw
+    tw.onopen = () => tw.send(JSON.stringify({type:'fast-trade',authorization:MKEY,payload:{assetMode:true,filterOutliers:true,items:[{blockchain:'solana',address:selected.address}]}}))
+    tw.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data)
+        if (d.type !== 'fast-trade' || !d.tokenAmountUsd) return
+        const isBuy = (d.type_trade||d.trade_type||'').toLowerCase() === 'buy' || d.type === 'buy'
+        const trade = {id:d.hash||Math.random().toString(36),sig:d.hash||'',age:0,type:isBuy?'Buy':'Sell',isBuy,mc:d.tokenMarketCapUSD||0,solAmount:(d.tokenNativePrice||0)*(d.tokenAmount||0)>0?((d.tokenNativePrice||0)*(d.tokenAmount||0)).toFixed(4):(d.tokenAmountUsd/150).toFixed(4),usdValue:(d.tokenAmountUsd||0).toFixed(2),wallet:d.sender||'',source:d.platform||'mobula',labels:d.labels||[],platform:d.platform||null,walletMeta:d.walletMetadata||null}
+        if (!dead) setTrades(prev => [trade,...prev].slice(0,60))
+      } catch {}
+    }
+    tw.onerror = () => {}
+    tw.onclose = () => {}
+
+    // OHLCV live candle stream
+    const ow = new WebSocket('wss://api.mobula.io')
+    mobulaOhlcvWs.current = ow
+    const periodMap = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h'}
+    ow.onopen = () => ow.send(JSON.stringify({type:'ohlcv',authorization:MKEY,payload:{asset:selected.address,chainId:'solana:solana',period:periodMap[chartTf]||'1m',maxUpdatesPerMinute:60}}))
+    ow.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data)
+        if (d.type !== 'ohlcv' || !d.open || !d.time) return
+        if (!dead && candleSeries.current) {
+          try { candleSeries.current.update({time:Math.floor(d.time/1000),open:d.open,high:d.high,low:d.low,close:d.close}) } catch {}
+        }
+      } catch {}
+    }
+    ow.onerror = () => {}
+    ow.onclose = () => {}
+
+    const ping = setInterval(() => {
+      if (tw.readyState===1) tw.send(JSON.stringify({event:'ping'}))
+      if (ow.readyState===1) ow.send(JSON.stringify({event:'ping'}))
+    }, 25000)
+
+    return () => {
+      dead = true
+      clearInterval(ping)
+      try{tw.close()}catch{}
+      try{ow.close()}catch{}
+    }
+  }, [selected?.id, chartTf])
 
   const selectToken = (token) => {
     setSelected(token); setSideTab('buy'); setBottomTab('trades')
@@ -984,21 +1039,26 @@ export default function RadarPage() {
                     {/* TRADES */}
                     {bottomTab==='trades' && (
                       <div style={{flex:1,overflowY:'auto'}}>
-                        <div style={{display:'grid',gridTemplateColumns:'52px 50px 90px 90px 90px 1fr',padding:'4px 14px',background:C.bg,fontFamily:'monospace',fontSize:'10px',color:C.text2,position:'sticky',top:0,borderBottom:`1px solid ${C.bg3}`,letterSpacing:'0.3px'}}>
-                          <span>AGE</span><span>TYPE</span><span>SOL</span><span>USD</span><span>SOURCE</span><span>WALLET</span>
+                        <div style={{display:'grid',gridTemplateColumns:'44px 44px 80px 80px 70px 70px 1fr',padding:'4px 14px',background:C.bg,fontFamily:'monospace',fontSize:'10px',color:C.text2,position:'sticky',top:0,borderBottom:`1px solid ${C.bg3}`,letterSpacing:'0.3px'}}>
+                          <span>AGE</span><span>TYPE</span><span>SOL</span><span>USD</span><span>LABEL</span><span>PLATFORM</span><span>WALLET</span>
                         </div>
                         {trades.length===0 ? (
                           <div style={{padding:'24px',textAlign:'center',color:C.text2,fontSize:'12px'}}>Loading trades...</div>
-                        ) : trades.map(t => (
-                          <div key={t.id} style={{display:'grid',gridTemplateColumns:'52px 50px 90px 90px 90px 1fr',padding:'6px 14px',borderBottom:`1px solid ${C.bg}`,alignItems:'center',background:t.isBuy?'rgba(22,163,74,0.03)':'rgba(239,68,68,0.03)'}} onMouseEnter={e=>e.currentTarget.style.background=C.bg4} onMouseLeave={e=>e.currentTarget.style.background=t.isBuy?'rgba(22,163,74,0.03)':'rgba(239,68,68,0.03)'}>
-                            <span style={{fontFamily:'monospace',fontSize:'10px',color:C.text2}}>{typeof t.age==='number'?t.age<60?`${t.age}s`:t.age<3600?`${Math.floor(t.age/60)}m`:`${Math.floor(t.age/3600)}h`:t.age}</span>
+                        ) : trades.map(t => {
+                          const LC={sniper:C.red,insider:'#a855f7',bundler:'#f97316',proTrader:C.accent,smartTrader:'#eab308',freshTrader:'#06b6d4'}
+                          const lbl=(t.labels||[])[0]
+                          const fmtAge=(n)=>{if(typeof n!=='number')return n||'0s';if(n<60)return n+'s';if(n<3600)return Math.floor(n/60)+'m';return Math.floor(n/3600)+'h'}
+                          const age=fmtAge(t.age)
+                          return(<div key={t.id} style={{display:'grid',gridTemplateColumns:'44px 44px 80px 80px 70px 70px 1fr',padding:'5px 14px',borderBottom:`1px solid ${C.bg}`,alignItems:'center',background:t.isBuy?'rgba(22,163,74,0.03)':'rgba(239,68,68,0.03)'}} onMouseEnter={e=>e.currentTarget.style.background=C.bg4} onMouseLeave={e=>e.currentTarget.style.background=t.isBuy?'rgba(22,163,74,0.03)':'rgba(239,68,68,0.03)'}>
+                            <span style={{fontFamily:'monospace',fontSize:'10px',color:C.text2}}>{age}</span>
                             <span style={{fontFamily:'monospace',fontSize:'11px',color:t.isBuy?C.green:C.red,fontWeight:'700'}}>{t.type}</span>
                             <span style={{fontFamily:'monospace',fontSize:'11px',color:C.text1}}>◎{t.solAmount}</span>
                             <span style={{fontFamily:'monospace',fontSize:'11px',color:t.isBuy?C.green:C.red,fontWeight:'700'}}>${t.usdValue}</span>
-                            <span style={{fontFamily:'monospace',fontSize:'9px',color:C.text2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.source}</span>
-                            <span style={{fontFamily:'monospace',fontSize:'10px',color:C.text2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{tr(t.wallet,5)}</span>
-                          </div>
-                        ))}
+                            <span style={{fontFamily:'monospace',fontSize:'9px',color:lbl?LC[lbl]||C.text2:C.text2,fontWeight:lbl?'700':'400'}}>{lbl||'-'}</span>
+                            <span style={{fontFamily:'monospace',fontSize:'9px',color:C.accent,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.platform||'-'}</span>
+                            <span style={{fontFamily:'monospace',fontSize:'10px',color:C.text2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.walletMeta?.entityName||tr(t.wallet,5)}</span>
+                          </div>)
+                        })}
                       </div>
                     )}
                     {/* HOLDERS */}
