@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import Nav from '../../components/Nav'
+import Sidebar from '../../components/Sidebar'
 
 const MOCK_LEADERBOARD = [
   { rank: 1, address: 'ANSMhFpT8RFkXpZGvohFc8EBvn6MRmAHMPT14CiUxRwM', displayName: 'Ansem', twitterHandle: 'blknoiz06', pnl7d: 84000, pnl30d: 420000, winRate: 68, totalTrades: 847, badge: 'top-caller' },
@@ -39,7 +39,7 @@ export default function LeaderboardPage() {
 
   return (
     <div style={{minHeight:'100vh',background:'#050508',color:'#e0e0f0',fontFamily:"'DM Sans',sans-serif"}}>
-      <Nav active="/leaderboard"/>
+      <Sidebar active="/leaderboard"/>
 
       <div style={{maxWidth:'1000px',margin:'0 auto',padding:'72px 24px 48px'}}>
 

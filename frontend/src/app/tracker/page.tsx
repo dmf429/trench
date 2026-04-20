@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Nav from '../../components/Nav'
+import Sidebar from '../../components/Sidebar'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api'
 
@@ -55,7 +55,7 @@ export default function TrackerPage() {
 
   return (
     <div style={{minHeight:'100vh',background:'#050508',color:'#e0e0f0',fontFamily:"'DM Sans',sans-serif"}}>
-      <Nav active="/tracker"/>
+      <Sidebar active="/tracker"/>
 
       <div style={{maxWidth:'1200px',margin:'0 auto',padding:'72px 24px 48px'}}>
         <div style={{marginBottom:'32px'}}>

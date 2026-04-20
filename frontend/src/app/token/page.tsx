@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client'
-import Nav from '../../components/Nav'
+import Sidebar from '../../components/Sidebar'
 
 const UTILITY = [
   {icon:'🔓',title:'Premium Access',desc:"Hold $TRENCH to unlock copy trade, advanced alerts, and full KOL analytics."},
@@ -29,10 +29,10 @@ const ROADMAP = [
 export default function TokenPage() {
   return (
     <div style={{minHeight:'100vh',background:'#050508',color:'#e0e0f0',fontFamily:"'DM Sans',sans-serif"}}>
-      <Nav active="/token"/>
+      <Sidebar active="/token"/>
 
       {/* HERO */}
-      <div style={{paddingTop:'52px',position:'relative',overflow:'hidden'}}>
+      <div style={{paddingLeft:'60px',position:'relative',overflow:'hidden'}}>
         <div style={{position:'absolute',inset:0,backgroundImage:'linear-gradient(rgba(0,255,136,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,0.03) 1px,transparent 1px)',backgroundSize:'60px 60px'}}/>
         <div style={{maxWidth:'900px',margin:'0 auto',padding:'80px 24px 60px',textAlign:'center',position:'relative'}}>
           <div style={{display:'inline-block',fontFamily:"'Share Tech Mono',monospace",fontSize:'10px',letterSpacing:'4px',color:'#00FF88',border:'1px solid rgba(0,255,136,0.3)',padding:'6px 16px',marginBottom:'24px'}}>COMING SOON — PUMP.FUN</div>

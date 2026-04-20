@@ -63,7 +63,7 @@ export default function Sidebar({ active = '' }) {
       }}
     >
       <div style={{position:'absolute',inset:0,pointerEvents:'none',zIndex:0,backgroundImage:'linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px)',backgroundSize:'20px 20px',maskImage:'linear-gradient(180deg,transparent,rgba(0,0,0,0.4) 30%,rgba(0,0,0,0.4) 70%,transparent)'}}/>
-      <a href="/" style={{display:'flex',alignItems:'center',gap:'11px',padding:'0 14px',height:'60px',textDecoration:'none',flexShrink:0,borderBottom:'1px solid rgba(255,255,255,0.04)',position:'relative',zIndex:1,overflow:'hidden'}}>
+      <a href="/radar" style={{display:'flex',alignItems:'center',gap:'11px',padding:'0',paddingLeft:expanded?'14px':'0',height:'60px',textDecoration:'none',flexShrink:0,borderBottom:'1px solid rgba(255,255,255,0.04)',position:'relative',zIndex:1,overflow:'hidden',justifyContent:expanded?'flex-start':'center'}}>
         <div style={{width:'32px',height:'32px',borderRadius:'9px',flexShrink:0,background:'linear-gradient(135deg,#00ff88 0%,#00e67a 40%,#00bfff 100%)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',fontWeight:'800',color:'#000',boxShadow:'0 0 0 1px rgba(0,255,136,0.3),0 4px 16px rgba(0,255,136,0.25)',letterSpacing:'-0.5px',fontFamily:'system-ui,sans-serif'}}>T</div>
         <div style={{opacity:expanded?1:0,transform:`translateX(${expanded?0:-6}px)`,transition:'opacity 0.18s,transform 0.18s',overflow:'hidden',whiteSpace:'nowrap'}}>
           <div style={{fontSize:'15px',fontWeight:'700',color:'#fff',letterSpacing:'0.8px',lineHeight:1.1,fontFamily:"system-ui,-apple-system,sans-serif"}}>TRENCH</div>
@@ -81,7 +81,7 @@ export default function Sidebar({ active = '' }) {
                 </div>
               )}
               <a href={item.href} style={{
-                display:'flex',alignItems:'center',gap:'11px',height:'40px',padding:'0 10px',borderRadius:'8px',
+                display:'flex',alignItems:'center',gap:'11px',height:'40px',padding:'0',paddingLeft:expanded?'10px':'0',borderRadius:'8px',
                 textDecoration:'none',justifyContent:expanded?'flex-start':'center',
                 background:act?'linear-gradient(135deg,rgba(0,255,136,0.1) 0%,rgba(0,191,255,0.05) 100%)':'transparent',
                 border:act?'1px solid rgba(0,255,136,0.12)':'1px solid transparent',
@@ -101,19 +101,19 @@ export default function Sidebar({ active = '' }) {
         })}
       </div>
       <div style={{borderTop:'1px solid rgba(255,255,255,0.04)',padding:'10px 8px 12px',display:'flex',flexDirection:'column',gap:'5px',position:'relative',zIndex:1}}>
-        <button style={{display:'flex',alignItems:'center',gap:'11px',height:'38px',padding:'0 10px',borderRadius:'8px',background:'transparent',border:'1px solid rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.35)',cursor:'pointer',width:'100%',justifyContent:expanded?'flex-start':'center',transition:'all 0.13s'}}
+        <button style={{display:'flex',alignItems:'center',gap:'11px',height:'38px',padding:'0',paddingLeft:expanded?'10px':'0',borderRadius:'8px',background:'transparent',border:'1px solid rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.35)',cursor:'pointer',width:'100%',justifyContent:expanded?'flex-start':'center',transition:'all 0.13s'}}
           onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color='rgba(255,255,255,0.65)';e.currentTarget.style.borderColor='rgba(255,255,255,0.1)'}}
           onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(255,255,255,0.35)';e.currentTarget.style.borderColor='rgba(255,255,255,0.07)'}}>
           <span style={{display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,width:'18px'}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
           <span style={{fontSize:'13px',fontWeight:'500',whiteSpace:'nowrap',opacity:expanded?1:0,transform:`translateX(${expanded?0:-6}px)`,transition:'opacity 0.14s,transform 0.14s',fontFamily:"system-ui,sans-serif"}}>Log In</span>
         </button>
         {wallet ? (
-          <button onClick={disconnect} style={{display:'flex',alignItems:'center',gap:'11px',height:'38px',padding:'0 10px',borderRadius:'8px',background:'rgba(0,255,136,0.06)',border:'1px solid rgba(0,255,136,0.15)',cursor:'pointer',width:'100%',justifyContent:expanded?'flex-start':'center',transition:'all 0.13s'}}>
+          <button onClick={disconnect} style={{display:'flex',alignItems:'center',gap:'11px',height:'38px',padding:'0',paddingLeft:expanded?'10px':'0',borderRadius:'8px',background:'rgba(0,255,136,0.06)',border:'1px solid rgba(0,255,136,0.15)',cursor:'pointer',width:'100%',justifyContent:expanded?'flex-start':'center',transition:'all 0.13s'}}>
             <div style={{width:'8px',height:'8px',borderRadius:'50%',flexShrink:0,background:'#00ff88',boxShadow:'0 0 0 2px rgba(0,255,136,0.2),0 0 10px rgba(0,255,136,0.5)'}}/>
             <span style={{fontSize:'11px',color:'#00ff88',fontFamily:'monospace',whiteSpace:'nowrap',opacity:expanded?1:0,transform:`translateX(${expanded?0:-6}px)`,transition:'opacity 0.14s,transform 0.14s'}}>{tr(wallet)}</span>
           </button>
         ) : (
-          <button onClick={connect} disabled={connecting} style={{display:'flex',alignItems:'center',gap:'11px',height:'38px',padding:'0 10px',borderRadius:'8px',background:expanded?'linear-gradient(135deg,#00ff88 0%,#00cc6a 100%)':'rgba(0,255,136,0.08)',border:'1px solid rgba(0,255,136,0.25)',color:expanded?'#000':'#00ff88',cursor:'pointer',width:'100%',justifyContent:expanded?'flex-start':'center',transition:'all 0.18s',boxShadow:expanded?'0 4px 20px rgba(0,255,136,0.2)':'none',fontWeight:expanded?'700':'400'}}>
+          <button onClick={connect} disabled={connecting} style={{display:'flex',alignItems:'center',gap:'11px',height:'38px',padding:'0',paddingLeft:expanded?'10px':'0',borderRadius:'8px',background:expanded?'linear-gradient(135deg,#00ff88 0%,#00cc6a 100%)':'rgba(0,255,136,0.08)',border:'1px solid rgba(0,255,136,0.25)',color:expanded?'#000':'#00ff88',cursor:'pointer',width:'100%',justifyContent:expanded?'flex-start':'center',transition:'all 0.18s',boxShadow:expanded?'0 4px 20px rgba(0,255,136,0.2)':'none',fontWeight:expanded?'700':'400'}}>
             <span style={{display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,width:'18px'}}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
             <span style={{fontSize:'13px',fontWeight:'700',whiteSpace:'nowrap',opacity:expanded?1:0,transform:`translateX(${expanded?0:-6}px)`,transition:'opacity 0.14s,transform 0.14s',fontFamily:"system-ui,sans-serif"}}>{connecting?'Connecting...':'Connect Wallet'}</span>
           </button>
