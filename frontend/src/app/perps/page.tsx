@@ -42,7 +42,7 @@ export default function PerpsPage() {
   }
 
   return (
-    <div style={{height:'100vh',display:'flex',flexDirection:'column',background:C.bg,color:C.text1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",overflow:'hidden',paddingLeft:'60px'}}>
+    <div style={{height:'100vh',display:'flex',flexDirection:'column',background:C.bg,color:C.text1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",overflow:'hidden',paddingLeft:'60px',backgroundImage:'radial-gradient(ellipse 60% 40% at 80% 0%,rgba(77,159,255,0.05) 0%,transparent 50%)'}}>
       <Sidebar active="/perps"/>
       <div style={{display:'flex',alignItems:'center',gap:'0',borderBottom:`1px solid ${C.border}`,background:C.bg,flexShrink:0,overflowX:'auto'}}>
         {MARKETS.map(m=>{const p=prices[m.sym];const act=mkt.sym===m.sym;return(

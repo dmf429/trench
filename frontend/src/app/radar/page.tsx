@@ -280,80 +280,109 @@ function TokenCard({token, isSelected, onSelect, flash}) {
   const txTotal = buys+sells||1
   const greenPct = Math.round((buys/txTotal)*100)
   const vol = token.volume1h||token.volume5m||0
-
-  const bgColor = flash==='up'?'rgba(0,255,136,0.06)':flash==='down'?'rgba(255,71,87,0.06)':isSelected?'rgba(0,255,136,0.05)':'transparent'
-  const borderL = isSelected?`2px solid ${C.accent}`:'2px solid transparent'
+  const isUp = netChange >= 0
 
   return (
     <div
       onClick={onSelect}
       style={{
-        padding:'10px 14px',cursor:'pointer',
-        background:bgColor,
-        borderLeft:borderL,
-        borderBottom:`1px solid ${C.border}`,
-        transition:'background 0.2s',
+        padding:'12px 14px 10px',cursor:'pointer',
+        background: flash==='up'
+          ? 'rgba(0,255,136,0.05)'
+          : flash==='down'
+          ? 'rgba(255,71,87,0.05)'
+          : isSelected
+          ? 'linear-gradient(135deg,rgba(0,255,136,0.06) 0%,rgba(0,153,255,0.03) 100%)'
+          : 'transparent',
+        borderBottom:`1px solid rgba(255,255,255,0.04)`,
+        borderLeft:`2px solid ${isSelected?C.accent:'transparent'}`,
+        transition:'all 0.15s',
+        position:'relative',
       }}
-      onMouseEnter={e=>{if(!flash&&!isSelected)e.currentTarget.style.background='rgba(255,255,255,0.02)'}}
-      onMouseLeave={e=>{e.currentTarget.style.background=bgColor}}
+      onMouseEnter={e=>{if(!isSelected&&!flash){e.currentTarget.style.background='rgba(255,255,255,0.025)';e.currentTarget.style.borderLeftColor='rgba(255,255,255,0.1)'}}}
+      onMouseLeave={e=>{if(!isSelected&&!flash){e.currentTarget.style.background='transparent';e.currentTarget.style.borderLeftColor='transparent'}}}
     >
-      {/* Row 1 */}
-      <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}}>
+      <div style={{display:'flex',gap:'10px',alignItems:'flex-start'}}>
         {/* Avatar */}
-        <div style={{position:'relative',flexShrink:0}}>
+        <div style={{position:'relative',flexShrink:0,marginTop:'1px'}}>
           {token.logoUri ? (
-            <img src={token.logoUri} alt="" style={{width:'36px',height:'36px',borderRadius:'8px',objectFit:'cover'}} onError={e=>e.target.style.display='none'}/>
+            <img src={token.logoUri} alt="" style={{width:'38px',height:'38px',borderRadius:'10px',objectFit:'cover',display:'block'}} onError={e=>e.target.style.display='none'}/>
           ) : (
-            <div style={{width:'36px',height:'36px',borderRadius:'8px',background:`linear-gradient(135deg,${token.color}33,${token.color}66)`,border:`1px solid ${token.color}44`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',fontWeight:'700',color:token.color}}>{token.symbol[0]}</div>
+            <div style={{
+              width:'38px',height:'38px',borderRadius:'10px',
+              background:`linear-gradient(135deg,${token.color}20 0%,${token.color}40 100%)`,
+              border:`1px solid ${token.color}25`,
+              display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:'15px',fontWeight:'800',color:token.color,
+            }}>{token.symbol[0]}</div>
           )}
-          <div style={{position:'absolute',bottom:'-3px',right:'-3px',width:'12px',height:'12px',borderRadius:'50%',background:C.bg3,border:`1.5px solid ${C.border}`,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <div style={{width:'5px',height:'5px',borderRadius:'50%',background:token.dexId==='pumpfun'?C.accent:C.blue}}/>
-          </div>
+          {/* Live indicator */}
+          {(buys+sells)>0&&<div style={{position:'absolute',bottom:'-2px',right:'-2px',width:'10px',height:'10px',borderRadius:'50%',background:isUp?C.accent:C.red,border:`2px solid ${C.bg2}`,boxShadow:`0 0 6px ${isUp?C.accent:C.red}88`}}/>}
         </div>
 
-        {/* Name + meta */}
+        {/* Center info */}
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:'flex',alignItems:'center',gap:'5px',marginBottom:'2px'}}>
-            <span style={{fontSize:'13px',fontWeight:'600',color:C.text1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'130px'}}>{token.name}</span>
-            <span style={{fontSize:'10px',color:C.text2,flexShrink:0}}>{token.symbol}</span>
+          {/* Name row */}
+          <div style={{display:'flex',alignItems:'center',gap:'5px',marginBottom:'3px'}}>
+            <span style={{fontSize:'13px',fontWeight:'600',color:'rgba(255,255,255,0.92)',letterSpacing:'-0.2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'140px'}}>{token.name}</span>
+            <span style={{fontSize:'9px',color:'rgba(255,255,255,0.25)',background:'rgba(255,255,255,0.06)',padding:'1px 5px',borderRadius:'4px',flexShrink:0,fontWeight:'500',letterSpacing:'0.3px'}}>{token.symbol}</span>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-            <span style={{fontSize:'9px',color:C.accent,fontFamily:'monospace'}}>{elapsed(token.pairCreatedAt)}</span>
-            <span style={{fontSize:'9px',color:`${netChange>=0?C.accent:C.red}`,fontWeight:'600'}}>{netChange>=0?'+':''}{netChange.toFixed(2)}%</span>
-            {token.bondingCurve > 0 && token.dexId==='pumpfun' && (
-              <div style={{display:'flex',alignItems:'center',gap:'2px'}}>
-                <div style={{width:'30px',height:'3px',borderRadius:'2px',background:'rgba(255,255,255,0.08)',overflow:'hidden'}}>
-                  <div style={{width:`${token.bondingCurve}%`,height:'100%',background:`linear-gradient(90deg,${C.accent},${C.blue})`,borderRadius:'2px'}}/>
+          {/* Stats row */}
+          <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
+            <span style={{fontSize:'10px',color:'rgba(255,255,255,0.3)',fontFamily:'monospace'}}>{elapsed(token.pairCreatedAt)}</span>
+            <span style={{
+              fontSize:'10px',fontWeight:'700',letterSpacing:'0.2px',
+              color:isUp?C.accent:C.red,
+              background:isUp?'rgba(0,255,136,0.08)':'rgba(255,71,87,0.08)',
+              padding:'1px 5px',borderRadius:'4px',
+            }}>{isUp?'+':''}{netChange.toFixed(2)}%</span>
+            {token.bondingCurve>0&&token.dexId==='pumpfun'&&(
+              <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                <div style={{width:'32px',height:'2.5px',borderRadius:'2px',background:'rgba(255,255,255,0.06)',overflow:'hidden'}}>
+                  <div style={{width:`${token.bondingCurve}%`,height:'100%',background:`linear-gradient(90deg,${C.accent},#0099ff)`,borderRadius:'2px'}}/>
                 </div>
-                <span style={{fontSize:'8px',color:C.text2}}>{token.bondingCurve}%</span>
+                <span style={{fontSize:'8.5px',color:'rgba(255,255,255,0.25)',fontFamily:'monospace'}}>{token.bondingCurve}%</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* MC + Vol */}
-        <div style={{textAlign:'right',flexShrink:0}}>
-          <div style={{fontSize:'13px',fontWeight:'700',color:C.text1,marginBottom:'2px'}}>{fmt(token.marketCap)}</div>
-          <div style={{fontSize:'10px',color:C.text2}}>{fmtV(vol)}</div>
+        {/* Right: MC + action */}
+        <div style={{flexShrink:0,textAlign:'right',display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'4px'}}>
+          <div style={{fontSize:'14px',fontWeight:'700',color:'rgba(255,255,255,0.9)',letterSpacing:'-0.3px',lineHeight:1}}>{fmt(token.marketCap)}</div>
+          <div style={{fontSize:'10px',color:'rgba(255,255,255,0.3)'}}>V {fmtV(vol)}</div>
         </div>
       </div>
 
-      {/* Row 2: TX bar + buy button */}
-      <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-        <span style={{fontSize:'9px',color:C.text2,flexShrink:0,fontFamily:'monospace'}}>TX {buys+sells}</span>
-        <div style={{flex:1,height:'3px',borderRadius:'2px',overflow:'hidden',background:'rgba(255,255,255,0.06)'}}>
-          <div style={{width:greenPct+'%',height:'100%',background:C.accent,borderRadius:'2px'}}/>
+      {/* Bottom row */}
+      <div style={{display:'flex',alignItems:'center',gap:'8px',marginTop:'8px'}}>
+        {/* TX count + bar */}
+        <div style={{flex:1,display:'flex',alignItems:'center',gap:'5px'}}>
+          <span style={{fontSize:'9px',color:'rgba(255,255,255,0.2)',fontFamily:'monospace',flexShrink:0}}>{buys+sells}</span>
+          <div style={{flex:1,height:'3px',borderRadius:'3px',background:'rgba(255,255,255,0.05)',overflow:'hidden',minWidth:'20px'}}>
+            <div style={{
+              width:greenPct+'%',height:'100%',
+              background:`linear-gradient(90deg,${C.accent},${C.accent2})`,
+              borderRadius:'3px',
+              boxShadow:greenPct>70?`0 0 6px ${C.accent}66`:'none',
+            }}/>
+          </div>
         </div>
-        <span style={{fontSize:'9px',color:C.text2,flexShrink:0,fontFamily:'monospace'}}>{sells}</span>
+        {/* Buy button */}
         <button
           onClick={e=>{e.stopPropagation();onSelect()}}
           style={{
-            background:`linear-gradient(135deg,${C.accent},${C.accent2})`,
-            border:'none',color:'#000',fontSize:'10px',fontWeight:'700',
-            padding:'4px 10px',cursor:'pointer',borderRadius:'6px',
+            background:'rgba(0,255,136,0.1)',
+            border:'1px solid rgba(0,255,136,0.2)',
+            color:C.accent,
+            fontSize:'10px',fontWeight:'700',
+            padding:'4px 10px',cursor:'pointer',borderRadius:'7px',
             flexShrink:0,whiteSpace:'nowrap',
-            boxShadow:'0 0 8px rgba(0,255,136,0.2)',
+            letterSpacing:'0.3px',
+            transition:'all 0.15s',
           }}
+          onMouseEnter={e=>{e.currentTarget.style.background='rgba(0,255,136,0.18)';e.currentTarget.style.boxShadow='0 0 12px rgba(0,255,136,0.2)'}}
+          onMouseLeave={e=>{e.currentTarget.style.background='rgba(0,255,136,0.1)';e.currentTarget.style.boxShadow='none'}}
         >⚡ 0.1 SOL</button>
       </div>
     </div>
@@ -731,7 +760,7 @@ export default function RadarPage() {
 
   // ── RENDER ────────────────────────────────────────────────────────────
   return (
-    <div style={{height:'100vh',display:'flex',flexDirection:'row',background:C.bg,color:C.text1,overflow:'hidden',fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"}}>
+    <div style={{height:'100vh',display:'flex',flexDirection:'row',background:C.bg,color:C.text1,overflow:'hidden',fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",backgroundImage:'radial-gradient(ellipse 80% 50% at 50% -20%,rgba(0,255,136,0.04) 0%,transparent 60%)'}}>
       <Sidebar active="/radar"/>
 
       {/* Toast */}
@@ -774,12 +803,12 @@ export default function RadarPage() {
         </div>
       )}
 
-      <div style={{display:'flex',flex:1,overflow:'hidden',flexDirection:'column'}}>
+      <div style={{display:'flex',flex:1,overflow:'hidden',flexDirection:'column',marginLeft:'60px'}}>
         {!selected ? (
           // ── PULSE FEED VIEW ──────────────────────────────────────────
           <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {/* Toolbar */}
-            <div style={{padding:'10px 20px',borderBottom:`1px solid ${C.border}`,background:C.bg,display:'flex',alignItems:'center',gap:'12px',flexShrink:0}}>
+            <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)',background:'rgba(10,11,16,0.8)',backdropFilter:'blur(12px)',display:'flex',alignItems:'center',gap:'12px',flexShrink:0}}>
               <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                 <span style={{fontSize:'20px',fontWeight:'700',color:C.text1,letterSpacing:'-0.5px'}}>Pulse</span>
                 <div style={{width:'7px',height:'7px',borderRadius:'50%',background:C.accent,boxShadow:`0 0 8px ${C.accent}`,animation:'pulse 2s infinite'}}/>
@@ -809,16 +838,16 @@ export default function RadarPage() {
                 return (
                   <div key={col.label} style={{display:'flex',flexDirection:'column',overflow:'hidden',borderRight:ci<2?`1px solid ${C.border}`:'none'}}>
                     {/* Column header */}
-                    <div style={{padding:'10px 14px 8px',borderBottom:`1px solid ${C.border}`,background:C.bg,flexShrink:0}}>
+                    <div style={{padding:'10px 14px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)',background:'rgba(10,11,16,0.6)',backdropFilter:'blur(8px)',flexShrink:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                        <span style={{fontSize:'14px',fontWeight:'700',color:C.text1}}>{col.label}</span>
-                        <div style={{display:'flex',alignItems:'center',gap:'5px',background:C.bg3,border:`1px solid ${C.border}`,borderRadius:'20px',padding:'2px 8px'}}>
-                          <span style={{fontSize:'10px',color:C.text2}}>⚡</span>
-                          <span style={{fontSize:'11px',color:C.text1,fontWeight:'600'}}>{filtered.length}</span>
+                        <span style={{fontSize:'13px',fontWeight:'600',color:'rgba(255,255,255,0.85)',letterSpacing:'0.2px'}}>{col.label}</span>
+                        <div style={{display:'flex',alignItems:'center',gap:'3px',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'20px',padding:'2px 8px'}}>
+                          <span style={{fontSize:'10px',color:'rgba(255,255,255,0.3)'}}>⚡</span>
+                          <span style={{fontSize:'11px',color:'rgba(255,255,255,0.7)',fontWeight:'600'}}>{filtered.length}</span>
                         </div>
                         <div style={{display:'flex',gap:'3px',marginLeft:'4px'}}>
                           {PRESETS[col.key].map(p=>(
-                            <button key={p.id} onClick={()=>setColPresets(prev=>({...prev,[col.key]:prev[col.key]?.id===p.id?null:p}))} style={{fontSize:'10px',fontWeight:'700',padding:'2px 7px',background:activePreset?.id===p.id?col.color:'transparent',border:`1px solid ${activePreset?.id===p.id?col.color:C.border}`,color:activePreset?.id===p.id?'#000':C.text2,cursor:'pointer',borderRadius:'4px',transition:'all 0.1s'}}>{p.label}</button>
+                            <button key={p.id} onClick={()=>setColPresets(prev=>({...prev,[col.key]:prev[col.key]?.id===p.id?null:p}))} style={{fontSize:'10px',fontWeight:'600',padding:'2px 8px',background:activePreset?.id===p.id?col.color+'18':'transparent',border:`1px solid ${activePreset?.id===p.id?col.color+'40':'rgba(255,255,255,0.08)'}`,color:activePreset?.id===p.id?col.color:'rgba(255,255,255,0.35)',cursor:'pointer',borderRadius:'5px',transition:'all 0.12s',letterSpacing:'0.3px'}}>{p.label}</button>
                           ))}
                         </div>
                         <div style={{marginLeft:'auto',width:'7px',height:'7px',borderRadius:'50%',background:col.color,boxShadow:`0 0 6px ${col.color}88`}}/>
@@ -839,7 +868,7 @@ export default function RadarPage() {
             </div>
 
             {/* Bottom status bar */}
-            <div style={{height:'28px',borderTop:`1px solid ${C.border}`,background:C.bg,display:'flex',alignItems:'center',padding:'0 16px',gap:'16px',flexShrink:0,overflowX:'auto'}}>
+            <div style={{height:'28px',borderTop:'1px solid rgba(255,255,255,0.04)',background:'rgba(8,9,14,0.9)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',padding:'0 16px',gap:'16px',flexShrink:0,overflowX:'auto'}}>
               <div style={{display:'flex',alignItems:'center',gap:'6px',flexShrink:0,background:`${C.accent}15`,border:`1px solid ${C.accent}30`,padding:'2px 8px',borderRadius:'4px'}}>
                 <span style={{fontSize:'10px',color:C.accent,fontWeight:'700',fontFamily:'monospace'}}>≡ PRESET 1</span>
               </div>
