@@ -467,9 +467,27 @@ export default function RadarPage() {
       })
       candleSeries.current = cs
       const fetchCandles = async () => {
-        const r = await fetch(`${BACKEND}/api/pump/candles/${selected.address}?tf=${chartTf}&limit=300`)
-        const d = await r.json()
-        return {candles: d.candles||[], source: d.source||'none'}
+        // 1. Try Mobula REST OHLCV (best for new pairs)
+        try {
+          const period = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h'}[chartTf]||'1m'
+          const r = await fetch(`https://api.mobula.io/api/1/market/history/pair?asset=${selected.address}&blockchain=solana&period=${period}&from=${Date.now()-7*86400000}&to=${Date.now()}`,
+            {headers:{Authorization:'0c618a08-8d56-430f-a814-80ab2142fe7f'}})
+          if (r.ok) {
+            const d = await r.json()
+            const list = d?.data?.price_history || d?.data || []
+            if (Array.isArray(list) && list.length > 0) {
+              const candles = list.map(([t,o,h,l,cl,v]) => ({time:Math.floor(t/1000),open:parseFloat(o)||0,high:parseFloat(h)||0,low:parseFloat(l)||0,close:parseFloat(cl)||0,volume:parseFloat(v)||0})).filter(c=>c.open>0)
+              if (candles.length > 0) return {candles, source:'mobula'}
+            }
+          }
+        } catch {}
+        // 2. Try backend pump/gecko chain
+        try {
+          const r = await fetch(`${BACKEND}/api/pump/candles/${selected.address}?tf=${chartTf}&limit=300`)
+          const d = await r.json()
+          if (d.candles && d.candles.length > 0) return {candles: d.candles, source: d.source||'backend'}
+        } catch {}
+        return {candles: [], source: 'none'}
       }
       const {candles, source} = await fetchCandles()
       if (cancelled) return
@@ -1010,7 +1028,7 @@ export default function RadarPage() {
                     <button key={tf} onClick={()=>setChartTf(tf)} style={{fontSize:'11px',padding:'4px 10px',background:chartTf===tf?C.bg2:'transparent',border:`1px solid ${chartTf===tf?C.border2:'transparent'}`,color:chartTf===tf?C.text1:C.text2,cursor:'pointer',borderRadius:'6px',fontWeight:chartTf===tf?'600':'400'}}>{label}</button>
                   ))}
                   <div style={{marginLeft:'auto',fontSize:'10px',color:chartSource==='pump-v2'||chartSource==='pump-v1'?C.green:chartSource==='geckoterminal'?'#eab308':chartSource==='loading'?C.text2:C.red,fontFamily:'monospace'}}>
-                    {chartSource==='pump-v2'?'● Pump V2 · Live':chartSource==='pump-v1'?'● Pump V1 · Live':chartSource==='geckoterminal'?'● GeckoTerminal':chartSource==='loading'?'⟳ Loading...':'● No data'}
+                    {chartSource==='mobula'?'● Mobula · Live':chartSource==='mobula-live'?'● Mobula · Live':chartSource==='pump-v2'?'● Pump V2':chartSource==='pump-v1'?'● Pump V1':chartSource==='geckoterminal'?'● GeckoTerminal':chartSource==='loading'?'⟳ Loading...':'● No data'}
                   </div>
                 </div>
                 {/* Chart canvas */}
