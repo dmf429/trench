@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Nav from '../../components/Nav'
+import Sidebar from '../../components/Sidebar'
 import * as web3 from '@solana/web3.js'
 
 const BACKEND = 'https://trench-production-cd7b.up.railway.app'
@@ -731,8 +731,8 @@ export default function RadarPage() {
 
   // ── RENDER ────────────────────────────────────────────────────────────
   return (
-    <div style={{height:'100vh',display:'flex',flexDirection:'column',background:C.bg,color:C.text1,overflow:'hidden',fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"}}>
-      <Nav active="/radar"/>
+    <div style={{height:'100vh',display:'flex',flexDirection:'row',background:C.bg,color:C.text1,overflow:'hidden',fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"}}>
+      <Sidebar active="/radar"/>
 
       {/* Toast */}
       {txStatus&&(
@@ -774,7 +774,7 @@ export default function RadarPage() {
         </div>
       )}
 
-      <div style={{display:'flex',flex:1,overflow:'hidden',marginTop:'52px'}}>
+      <div style={{display:'flex',flex:1,overflow:'hidden',flexDirection:'column'}}>
         {!selected ? (
           // ── PULSE FEED VIEW ──────────────────────────────────────────
           <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>

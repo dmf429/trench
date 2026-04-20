@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 import { useState, useEffect } from 'react'
-import Nav from '../../components/Nav'
+import Sidebar from '../../components/Sidebar'
 
 const C = {bg:'#06070b',bg2:'#0c0c10',bg3:'#1a1b23',bg4:'#22242d',text1:'#fcfcfc',text2:'#6b6b7a',text3:'#d4d4d8',accent:'#526fff',green:'#16a34a',green2:'#14f195',red:'#ef4444',yellow:'#eab308',border:'#1a1b23'}
 const MARKETS=[{sym:'SOL-PERP',base:'SOL',id:'solana',vol:'$1.2B',oi:'$340M',funding:'+0.012%'},{sym:'BTC-PERP',base:'BTC',id:'bitcoin',vol:'$8.4B',oi:'$2.1B',funding:'+0.008%'},{sym:'ETH-PERP',base:'ETH',id:'ethereum',vol:'$3.2B',oi:'$890M',funding:'+0.010%'},{sym:'JUP-PERP',base:'JUP',id:'jupiter-exchange-solana',vol:'$120M',oi:'$45M',funding:'-0.005%'},{sym:'WIF-PERP',base:'WIF',id:'dogwifcoin',vol:'$340M',oi:'$98M',funding:'+0.018%'},{sym:'BONK-PERP',base:'BONK',id:'bonk',vol:'$89M',oi:'$23M',funding:'+0.022%'}]
@@ -42,8 +42,8 @@ export default function PerpsPage() {
   }
 
   return (
-    <div style={{height:'100vh',display:'flex',flexDirection:'column',background:C.bg,color:C.text1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",overflow:'hidden',paddingTop:'52px'}}>
-      <Nav active="/perps"/>
+    <div style={{height:'100vh',display:'flex',flexDirection:'column',background:C.bg,color:C.text1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",overflow:'hidden',paddingLeft:'60px'}}>
+      <Sidebar active="/perps"/>
       <div style={{display:'flex',alignItems:'center',gap:'0',borderBottom:`1px solid ${C.border}`,background:C.bg,flexShrink:0,overflowX:'auto'}}>
         {MARKETS.map(m=>{const p=prices[m.sym];const act=mkt.sym===m.sym;return(
           <button key={m.sym} onClick={()=>setMkt(m)} style={{padding:'10px 16px',background:act?`${C.accent}18`:'transparent',border:'none',borderBottom:`2px solid ${act?C.accent:'transparent'}`,cursor:'pointer',flexShrink:0}}>

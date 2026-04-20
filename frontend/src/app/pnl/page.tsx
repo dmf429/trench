@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 import { useState, useEffect } from 'react'
-import Nav from '../../components/Nav'
+import Sidebar from '../../components/Sidebar'
 
 const C = {bg:'#06070b',bg2:'#0c0c10',bg3:'#1a1b23',bg4:'#22242d',text1:'#fcfcfc',text2:'#6b6b7a',text3:'#d4d4d8',accent:'#526fff',green:'#16a34a',green2:'#14f195',red:'#ef4444',yellow:'#eab308',border:'#1a1b23'}
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -31,8 +31,8 @@ export default function PnlPage() {
   const getColor=(pnl)=>{if(pnl===undefined)return 'transparent';const intensity=Math.min(Math.abs(pnl)/maxAbs,1);return pnl>0?`rgba(22,163,74,${0.15+intensity*0.7})`:`rgba(239,68,68,${0.15+intensity*0.7})`}
 
   return (
-    <div style={{minHeight:'100vh',background:C.bg,color:C.text1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",paddingTop:'52px'}}>
-      <Nav active="/pnl"/>
+    <div style={{minHeight:'100vh',background:C.bg,color:C.text1,fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif",paddingLeft:'60px'}}>
+      <Sidebar active="/pnl"/>
       <div style={{maxWidth:'1100px',margin:'0 auto',padding:'24px 20px'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px',flexWrap:'wrap',gap:'12px'}}>
           <div>
